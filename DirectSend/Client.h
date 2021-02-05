@@ -4,8 +4,7 @@
 
 using Addrinfo = struct addrinfo;
 
-template <size_t BufferSize>
-class Client : public NetworkDevice<BufferSize>
+class Client : public NetworkDevice
 {
 public:
 	Client(std::string Ip, std::string Port);
@@ -14,16 +13,15 @@ private:
     bool ConnectToServer(Addrinfo* start);
 };
 
-template <size_t BufferSize>
-Client<BufferSize>::Client(std::string Ip, std::string Port)
+Client::Client(std::string Ip, std::string Port)
 {
     WSADATA wsaData;
     Addrinfo hints;
 
     // Initialize Winsock
-    this->BytesReceived = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (this->BytesReceived != 0) {
-        std::cerr << "WSAStartup failed with error: " << this->BytesReceived << std::endl;
+    BytesReceived = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (BytesReceived != 0) {
+        std::cerr << "WSAStartup failed with error: " << BytesReceived << std::endl;
         return;
     }
 
@@ -34,9 +32,9 @@ Client<BufferSize>::Client(std::string Ip, std::string Port)
 
     // Resolve the server address and port
     addrinfo* result = nullptr;
-    this->BytesReceived = getaddrinfo(Ip.data(), Port.data(), &hints, &result);
-    if (this->ErrorCode != 0) {
-        std::cerr << "getaddrinfo failed with error: " << this->ErrorCode << std::endl;
+    BytesReceived = getaddrinfo(Ip.data(), Port.data(), &hints, &result);
+    if (ErrorCode != 0) {
+        std::cerr << "getaddrinfo failed with error: " << ErrorCode << std::endl;
         return;
     }
 
@@ -47,30 +45,29 @@ Client<BufferSize>::Client(std::string Ip, std::string Port)
         Sleep(1000);
     }
 
-    if (this->ClientSocket == INVALID_SOCKET) {
+    if (ClientSocket == INVALID_SOCKET) {
         std::cerr << "Unable to connect to server!" << std::endl;
         return;
     }
 }
 
-template <size_t BufferSize>
-bool Client<BufferSize>::ConnectToServer(Addrinfo* start)
+bool Client::ConnectToServer(Addrinfo* start)
 {
     for (Addrinfo* ptr = start; ptr != NULL; ptr = ptr->ai_next) {
         // Create a SOCKET for connecting to server
-        this->ClientSocket.GetSocket() = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
-        if (this->ClientSocket == INVALID_SOCKET) {
+        ClientSocket.GetSocket() = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
+        if (ClientSocket == INVALID_SOCKET) {
             std::cerr << "socket failed with error: " << WSAGetLastError() << std::endl;
             return false;
         }
 
         // Connect to server
         
-        this->ErrorCode = connect(this->ClientSocket.GetSocket(), ptr->ai_addr, (int)ptr->ai_addrlen);
-        if (this->ErrorCode == SOCKET_ERROR) {
+        ErrorCode = connect(ClientSocket.GetSocket(), ptr->ai_addr, (int)ptr->ai_addrlen);
+        if (ErrorCode == SOCKET_ERROR) {
             std::cerr << "socket failed with error: " << WSAGetLastError() << std::endl;
-            closesocket(this->ClientSocket);
-            this->ClientSocket = INVALID_SOCKET;
+            closesocket(ClientSocket);
+            ClientSocket = INVALID_SOCKET;
             continue;
         }
 

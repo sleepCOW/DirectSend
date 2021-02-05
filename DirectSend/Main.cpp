@@ -1,8 +1,9 @@
 #include "Server.h"
 #include "Client.h"
-#include "Common.h"
 #include <iostream>
-#include <string>
+#include <thread>
+#include <list>
+#include <mutex>
 
 #include <chrono>
 #include <fileapi.h>
@@ -11,18 +12,20 @@
 constexpr int AllRequiredArguments = 6;
 constexpr size_t BufferLength = 512;
 
-#define ARGUMENTS_UNSPECIFIED -1
-#define WRONG_PASSWORD -2
-
 int ServerMain(int Argc, char* Argv[]);
 int ClientMain(int Argc, char* Argv[]);
+
+using std::string;
+using std::thread;
+using std::list;
+using std::mutex;
 
 int main(int argc, char* argv[])
 {
 	if (argc < 2)
 	{
 		std::cout << "SPECIFY MODE!\n";
-		return ARGUMENTS_UNSPECIFIED;
+		return -1;
 	}
 
 	if (strcmp(argv[1], "server") == 0)
@@ -34,11 +37,26 @@ int main(int argc, char* argv[])
 		return ClientMain(argc, argv);
 	}
 
-	return ARGUMENTS_UNSPECIFIED;
+	return -1;
 }
 
-template <size_t BufferSize>
-int SendFile(NetworkDevice<BufferSize>& NetworkDevice, string& FileName)
+struct Buffer
+{
+	char* Data;
+	uint16_t Size = 0;
+
+	Buffer(uint16_t _Size) : Size(_Size)
+	{
+		Data = new char[Size];
+	}
+
+	~Buffer()
+	{
+		delete[] Data;
+	}
+};
+
+int SendFile(NetworkDevice& NetDevice, string& FileName)
 {
 	// Open a file, also lock file until transfer is done (accept only reading for other processes)
 	HANDLE FileToTransfer = CreateFile(CharToWChar(FileName.data()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -50,22 +68,56 @@ int SendFile(NetworkDevice<BufferSize>& NetworkDevice, string& FileName)
 	}
 
 	CutToFileName(FileName);
-	NetworkDevice.Send(OperationCode::ReceiveFileName, FileName);
+	NetDevice.Send(OperationCode::ReceiveFileName, FileName);
 
 	DWORD FileSize = GetFileSize(FileToTransfer, nullptr);
 	DWORD SizeLeft = FileSize;
 
+	mutex BufferMutex;
+	list<Buffer*> CommonBuffer;
+	bool bTranferFinished = false;
+	auto SendFileData = [&BufferMutex, &CommonBuffer, &NetDevice, &bTranferFinished]()
+	{
+		Buffer* BufferToWrite = nullptr;
+		do 
+		{
+			{
+				std::lock_guard<mutex> LockGuard(BufferMutex);
+
+				if (not CommonBuffer.empty())
+				{
+					BufferToWrite = CommonBuffer.front();
+					CommonBuffer.pop_front();
+				}
+			}
+
+			if (BufferToWrite != nullptr)
+			{
+				NetDevice.Send(OperationCode::ReceiveFileData, BufferToWrite->Data, BufferToWrite->Size);
+				delete BufferToWrite;
+				BufferToWrite = nullptr;
+			}
+		} while (not bTranferFinished || not CommonBuffer.empty());
+	};
+	thread FileThread(SendFileData);
+
 	// Read bytes and send until file end
 	DWORD BytesRead;
 	bool ReadResult = false;
-	auto& Buffer = NetworkDevice.GetBuffer();
+	char* Data = NetDevice.GetData();
 	auto start = std::chrono::high_resolution_clock::now();
 	auto tranfer_start = std::chrono::high_resolution_clock::now();
 	do {
-		ReadResult = ReadFile(FileToTransfer, Buffer.data(), Buffer.size(), &BytesRead, NULL);
+		ReadResult = ReadFile(FileToTransfer, Data, NetDevice.GetBufferSize(), &BytesRead, NULL);
 		if (ReadResult and BytesRead > 0)
 		{
-			NetworkDevice.Send(OperationCode::ReceiveFileData, BytesRead);
+			{
+				std::lock_guard<mutex> Lock(BufferMutex);
+
+				Buffer* NewBuffer = new Buffer(BytesRead);
+				memcpy(NewBuffer->Data, Data, BytesRead);
+				CommonBuffer.push_back(NewBuffer);
+			}
 
 			if (GetTimePast(tranfer_start).count() > 2000)
 			{
@@ -80,8 +132,10 @@ int SendFile(NetworkDevice<BufferSize>& NetworkDevice, string& FileName)
 			CloseHandle(FileToTransfer);
 			return GetLastError();
 		}
-	} while (ReadResult and BytesRead == Buffer.size());
-	NetworkDevice.Send(OperationCode::FinishedTransfer, "Gratz!");
+	} while (ReadResult and BytesRead == NetDevice.GetBufferSize());
+	bTranferFinished = true;
+	FileThread.join();
+	NetDevice.Send(OperationCode::FinishedTransfer, "Gratz!");
 	Sleep(4000);
 
 	// Record end time
@@ -92,13 +146,49 @@ int SendFile(NetworkDevice<BufferSize>& NetworkDevice, string& FileName)
 	return 0;
 }
 
-template <size_t BufferSize>
-int ReceiveFile(NetworkDevice<BufferSize>& NetworkDevice, string& Path)
+int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 {
 	// receive file name
 	HANDLE File;
 	OperationCode CurrentState = OperationCode::Invalid;
-	auto WriteToFile = [&NetworkDevice, &Path, &CurrentState, &File](OperationCode OpCode)
+	mutex BufferMutex;
+	list<Buffer*> CommonBuffer;
+	bool bTranferFinished = false;
+	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File]()
+	{
+		Buffer* BufferToWrite = nullptr;
+		do
+		{
+			{
+				std::lock_guard<mutex> LockGuard(BufferMutex);
+
+				if (not CommonBuffer.empty())
+				{
+					BufferToWrite = CommonBuffer.front();
+					CommonBuffer.pop_front();
+				}
+			}
+
+			if (BufferToWrite != nullptr)
+			{
+				DWORD BytesWritten;
+				bool bSuccess = WriteFile(File, BufferToWrite->Data, BufferToWrite->Size, &BytesWritten, NULL);
+				if (bSuccess)
+				{
+
+				}
+				else
+				{
+					printf("Failed to write to the file: %d\n", GetLastError());
+				}
+				delete BufferToWrite;
+				BufferToWrite = nullptr;
+			}
+		} while (not bTranferFinished || not CommonBuffer.empty());
+	};
+	thread WriteFileThread(WriteToFileTask);
+
+	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer](OperationCode OpCode)
 	{
 		CurrentState = OpCode;
 
@@ -116,7 +206,7 @@ int ReceiveFile(NetworkDevice<BufferSize>& NetworkDevice, string& Path)
 				Path.push_back('\\');
 			}
 
-			string FileName(NetworkDevice.GetData(), NetworkDevice.GetBytesReceived());
+			string FileName(NetDevice.GetData(), NetDevice.GetBytesReceived());
 			Path.append(FileName);
 
 			LPWSTR WFileName = CharToWChar(Path.data());
@@ -131,20 +221,18 @@ int ReceiveFile(NetworkDevice<BufferSize>& NetworkDevice, string& Path)
 		}
 		else if (OpCode == OperationCode::ReceiveFileData)
 		{
-			DWORD BytesWritten;
-			bool bSuccess = WriteFile(File, NetworkDevice.GetData(), NetworkDevice.GetBytesReceived(), &BytesWritten, NULL);
-			if (bSuccess)
 			{
+				std::lock_guard<mutex> Lock(BufferMutex);
 
-			}
-			else
-			{
-				printf("Failed to write to the file: %d\n", GetLastError());
+				Buffer* NewBuffer = new Buffer(NetDevice.GetBytesReceived());
+				memcpy(NewBuffer->Data, NetDevice.GetData(), NewBuffer->Size);
+				CommonBuffer.push_back(NewBuffer);
 			}
 		}
 		else if (OpCode == OperationCode::FinishedTransfer)
 		{
-			std::string Received(NetworkDevice.GetData(), NetworkDevice.GetBytesReceived());
+			bTranferFinished = true;
+			std::string Received(NetDevice.GetData(), NetDevice.GetBytesReceived());
 			std::cout << Received << "\n";
 		}
 		else
@@ -156,7 +244,8 @@ int ReceiveFile(NetworkDevice<BufferSize>& NetworkDevice, string& Path)
 	{
 		return not (OpCode == OperationCode::FinishedTransfer || OpCode == OperationCode::Invalid || CurrentState == OperationCode::Invalid);
 	};
-	bool bResult = NetworkDevice.Listen(WriteToFile, WhileJobNotFinished);
+	bool bResult = NetDevice.Listen(WriteToFile, WhileJobNotFinished);
+	WriteFileThread.join();
 
 	CloseHandle(File);
 	return !bResult;
@@ -189,19 +278,19 @@ int ServerMain(int Argc, char* Argv[])
 	if (Port.empty())
 	{
 		std::cout << "Portmust be specified!" << std::endl;
-		return ARGUMENTS_UNSPECIFIED;
+		return -1;
 	}
 
 	if (Mode != "send" and Mode != "receive")
 	{
 		std::cout << "Mode must be specified!" << std::endl;
-		return ARGUMENTS_UNSPECIFIED;
+		return -1;
 	}
 
 	std::cout << "Openning connection for port: " << Port << "\n"
 			  << "Getting ready to " << Mode << "\n";
 
-	Server<BufferLength> DServer{ string(Port) };
+	Server DServer{ string(Port) };
 	if (Mode == "send")
 	{
 		return SendFile(DServer, FileName);
@@ -239,16 +328,16 @@ int ClientMain(int Argc, char* Argv[])
     if (Ip.empty() or Port.empty())
     {
         std::cout << "Ip and Port must be specified!\n";
-        return ARGUMENTS_UNSPECIFIED;
+        return -1;
     }
 
 	if (Mode != "send" and Mode != "receive")
 	{
 		std::cout << "Mode must be specified!" << std::endl;
-		return ARGUMENTS_UNSPECIFIED;
+		return -1;
 	}
 
-    Client<BufferLength> DClient{ Ip, Port };
+    Client DClient{ Ip, Port };
 	if (Mode == "send")
 	{
 		return SendFile(DClient, FileName);

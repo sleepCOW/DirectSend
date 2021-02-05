@@ -3,21 +3,19 @@
 #include "NetworkDevice.h"
 
 // Synchronous TCP Server that listens only 1 client
-template <size_t BufferSize>
-class Server : public NetworkDevice<BufferSize>
+class Server : public NetworkDevice
 {
 public:
 	Server(std::string Port);
 };
 
-template <size_t BufferSize>
-Server<BufferSize>::Server(std::string Port)
+Server::Server(std::string Port)
 {
 	WSADATA Wsadata;
-	this->ErrorCode = WSAStartup(MAKEWORD(2, 2), &Wsadata);
-	if (this->ErrorCode != 0)
+	ErrorCode = WSAStartup(MAKEWORD(2, 2), &Wsadata);
+	if (ErrorCode != 0)
 	{
-		std::cerr << "WSAStartup failed: " << this->ErrorCode << std::endl;
+		std::cerr << "WSAStartup failed: " << ErrorCode << std::endl;
 		return;
 	}
 	
@@ -37,8 +35,8 @@ Server<BufferSize>::Server(std::string Port)
 		return;
 	}
 	
-	this->ErrorCode = bind(ListenSocket, (SOCKADDR*)&SocketDesc, sizeof(sockaddr_in));
-	if (this->ErrorCode == SOCKET_ERROR) {
+	ErrorCode = bind(ListenSocket, (SOCKADDR*)&SocketDesc, sizeof(sockaddr_in));
+	if (ErrorCode == SOCKET_ERROR) {
 		std::cerr << "bind failed with error: " << WSAGetLastError << std::endl;
 		return;
 	}
@@ -49,8 +47,8 @@ Server<BufferSize>::Server(std::string Port)
 	}
 
 	// Accept a client socket
-	this->ClientSocket.GetSocket() = accept(ListenSocket, NULL, NULL);
-	if (this->ClientSocket == INVALID_SOCKET) {
+	ClientSocket.GetSocket() = accept(ListenSocket, NULL, NULL);
+	if (ClientSocket == INVALID_SOCKET) {
 		std::cerr << "accept failed: " << WSAGetLastError << std::endl;
 		return;
 	}
