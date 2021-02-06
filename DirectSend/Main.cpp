@@ -72,8 +72,8 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 
 	LARGE_INTEGER FileSize;
 	GetFileSizeEx(FileToTransfer, &FileSize);
-	LARGE_INTEGER SizeLeft;
-	SizeLeft.QuadPart = 0;
+	LARGE_INTEGER CurrentProgress;
+	CurrentProgress.QuadPart = 0;
 
 	NetDevice.Send(OperationCode::ReceiveFileSize, (char*)&FileSize, sizeof(DWORD));
 
@@ -133,9 +133,9 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 
 			if (GetTimePast(tranfer_start).count() > 2000)
 			{
-				SizeLeft.QuadPart += BytesRead;
-				std::cout << "Progress: " << double(SizeLeft.QuadPart) / double(FileSize.QuadPart) * 100.0 << "%\n";
-				std::cout << "Left MB: " << SizeLeft.QuadPart / 1024 / 1024 << "%\n";
+				CurrentProgress.QuadPart += BytesRead;
+				std::cout << "Progress: " << double(CurrentProgress.QuadPart) / double(FileSize.QuadPart) * 100.0 << "% " 
+						  << CurrentProgress.QuadPart / 1024 / 1024 << "/" << FileSize.QuadPart / 1024 / 1024 << "MB\n";
 				tranfer_start = std::chrono::high_resolution_clock::now();
 			}
 		}
