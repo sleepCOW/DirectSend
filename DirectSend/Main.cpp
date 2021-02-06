@@ -124,7 +124,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 			if (GetTimePast(tranfer_start).count() > 2000)
 			{
 				SizeLeft += BytesRead;
-				std::cout << "Progress: " << (float(SizeLeft) / float(FileSize)) << "%\n";
+				std::cout << "Progress: " << (float(SizeLeft) / float(FileSize)) * 100.f << "%\n";
 				tranfer_start = std::chrono::high_resolution_clock::now();
 			}
 		}
@@ -182,10 +182,10 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				CurrentProgress += BytesWritten;
 				if (GetTimePast(tranfer_start).count() > 2000)
 				{
-					std::cout << "Progress: " << (float(CurrentProgress) / float(FileSize)) << "%\n";
+					std::cout << "Progress: " << (float(CurrentProgress) / float(FileSize)) * 100.f  << "%\n";
 					tranfer_start = std::chrono::high_resolution_clock::now();
 				}
-				else
+				if (!bSuccess)
 				{
 					printf("Failed to write to the file: %d\n", GetLastError());
 				}
@@ -266,7 +266,6 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 
 int ServerMain(int Argc, char* Argv[])
 {
-	using std::string;
 	string Port, FileName, Mode, Path;
 
 	Mode = Argv[2];

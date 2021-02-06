@@ -52,4 +52,5 @@ Server::Server(std::string Port)
 		std::cerr << "accept failed: " << WSAGetLastError << std::endl;
 		return;
 	}
+	std::cout << "Client is connected!\n";
 }
