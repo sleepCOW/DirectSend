@@ -129,11 +129,11 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 				memcpy(NewBuffer->Data, Data, BytesRead);
 				CommonBuffer.push_back(NewBuffer);
 				BufferMutex.unlock();
+				CurrentProgress.QuadPart += BytesRead;
 			}
 
 			if (GetTimePast(tranfer_start).count() > 2000)
 			{
-				CurrentProgress.QuadPart += BytesRead;
 				std::cout << "Progress: " << double(CurrentProgress.QuadPart) / double(FileSize.QuadPart) * 100.0 << "% " 
 						  << CurrentProgress.QuadPart / 1024 / 1024 << "/" << FileSize.QuadPart / 1024 / 1024 << "MB\n";
 				tranfer_start = std::chrono::high_resolution_clock::now();
