@@ -71,7 +71,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	NetDevice.Send(OperationCode::ReceiveFileName, FileName);
 
 	DWORD FileSize = GetFileSize(FileToTransfer, nullptr);
-	DWORD SizeLeft = FileSize;
+	DWORD SizeLeft = 0;
 
 	mutex BufferMutex;
 	list<Buffer*> CommonBuffer;
@@ -121,8 +121,8 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 
 			if (GetTimePast(tranfer_start).count() > 2000)
 			{
-				SizeLeft -= BytesRead;
-				std::cout << "Progress: " << (float(SizeLeft) / float(FileSize)) * 100.f << "%\n";
+				SizeLeft += BytesRead;
+				std::cout << "Progress: " << (float(SizeLeft) / float(FileSize)) << "%\n";
 				tranfer_start = std::chrono::high_resolution_clock::now();
 			}
 		}
