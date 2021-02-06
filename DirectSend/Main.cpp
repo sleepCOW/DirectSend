@@ -113,12 +113,20 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 		ReadResult = ReadFile(FileToTransfer, Data, NetDevice.GetBufferSize(), &BytesRead, NULL);
 		if (ReadResult and BytesRead > 0)
 		{
+		tryAgainMarker:
 			{
-				std::lock_guard<mutex> Lock(BufferMutex);
+				BufferMutex.lock();
+				if (CommonBuffer.size() > 10000)
+				{
+					BufferMutex.unlock();
+					Sleep(3 * 1000); 
+					goto tryAgainMarker;
+				}
 
 				Buffer* NewBuffer = new Buffer(BytesRead);
 				memcpy(NewBuffer->Data, Data, BytesRead);
 				CommonBuffer.push_back(NewBuffer);
+				BufferMutex.unlock();
 			}
 
 			if (GetTimePast(tranfer_start).count() > 2000)
