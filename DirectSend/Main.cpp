@@ -148,11 +148,16 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	return 0;
 }
 
+mutex consoleLock;
+
+DWORD ReceivedBytes = 0;
+
 int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 {
 	DWORD FileSize = 0;
 	DWORD CurrentProgress = 0;
 	auto tranfer_start = std::chrono::high_resolution_clock::now();
+	auto tranfer_start2 = std::chrono::high_resolution_clock::now();
 
 	// receive file name
 	HANDLE File;
@@ -180,14 +185,17 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				DWORD BytesWritten;
 				bool bSuccess = WriteFile(File, BufferToWrite->Data, BufferToWrite->Size, &BytesWritten, NULL);
 				CurrentProgress += BytesWritten;
-				if (GetTimePast(tranfer_start).count() > 2000)
-				{
-					std::cout << "Progress: " << (float(CurrentProgress) / float(FileSize)) * 100.f  << "%\n";
-					tranfer_start = std::chrono::high_resolution_clock::now();
-				}
 				if (!bSuccess)
 				{
 					printf("Failed to write to the file: %d\n", GetLastError());
+				}
+				if (GetTimePast(tranfer_start).count() > 2000)
+				{
+					std::lock_guard<mutex> LockGuard(consoleLock);
+
+					std::cout << "Progress: " << (float(CurrentProgress) / float(FileSize)) << "%\n";
+					std::cout << "Written : " << (CurrentProgress / 1024 / 1024) << "MB\n";
+					tranfer_start = std::chrono::high_resolution_clock::now();
 				}
 				delete BufferToWrite;
 				BufferToWrite = nullptr;
@@ -196,7 +204,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 	};
 	thread WriteFileThread(WriteToFileTask);
 
-	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer, &FileSize](OperationCode OpCode)
+	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer, &FileSize, &tranfer_start2](OperationCode OpCode)
 	{
 		CurrentState = OpCode;
 
@@ -224,8 +232,10 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 			if (File == INVALID_HANDLE_VALUE)
 			{
 				printf("Failed to create file: %s with error %d\n", FileName.data(), GetLastError());
-				return GetLastError();
+				return;
 			}
+			MemoryBarrier();
+			Sleep(1);
 		}
 		else if (OpCode == OperationCode::ReceiveFileSize)
 		{
@@ -234,12 +244,22 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 		}
 		else if (OpCode == OperationCode::ReceiveFileData)
 		{
+			int ReceivedBytesNow = NetDevice.GetBytesReceived();
+			ReceivedBytes += ReceivedBytesNow;
 			{
 				std::lock_guard<mutex> Lock(BufferMutex);
 
-				Buffer* NewBuffer = new Buffer(NetDevice.GetBytesReceived());
+				Buffer* NewBuffer = new Buffer(ReceivedBytesNow);
 				memcpy(NewBuffer->Data, NetDevice.GetData(), NewBuffer->Size);
 				CommonBuffer.push_back(NewBuffer);
+			}
+
+			if (GetTimePast(tranfer_start2).count() > 2000)
+			{
+				std::lock_guard<mutex> LockGuard(consoleLock);
+
+				std::cout << "Received: " << (ReceivedBytes / 1024 / 1024) << "MB\n";
+				tranfer_start2 = std::chrono::high_resolution_clock::now();
 			}
 		}
 		else if (OpCode == OperationCode::FinishedTransfer)
