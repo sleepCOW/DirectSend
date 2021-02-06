@@ -134,7 +134,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 			if (GetTimePast(tranfer_start).count() > 2000)
 			{
 				SizeLeft.QuadPart += BytesRead;
-				std::cout << "Progress: " << (float(SizeLeft.QuadPart) / float(FileSize.QuadPart)) * 100.f << "%\n";
+				std::cout << "Progress: " << double(SizeLeft.QuadPart) / double(FileSize.QuadPart) * 100.f << "%\n";
 				tranfer_start = std::chrono::high_resolution_clock::now();
 			}
 		}
@@ -157,8 +157,6 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	CloseHandle(FileToTransfer);
 	return 0;
 }
-
-mutex consoleLock;
 
 DWORD ReceivedBytes = 0;
 
@@ -203,9 +201,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				}
 				if (GetTimePast(tranfer_start).count() > 2000)
 				{
-					std::lock_guard<mutex> LockGuard(consoleLock);
-
-					std::cout << "Progress: " << (float(CurrentProgress.QuadPart) / float(FileSize.QuadPart)) * 100.f << "%\n";
+					std::cout << "Progress: " << double(CurrentProgress.QuadPart) / double(FileSize.QuadPart) * 100.f << "%\n";
 					std::cout << "Written : " << (CurrentProgress.QuadPart / 1024 / 1024) << "MB\n";
 					tranfer_start = std::chrono::high_resolution_clock::now();
 				}
@@ -268,8 +264,6 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 
 			if (GetTimePast(tranfer_start2).count() > 2000)
 			{
-				std::lock_guard<mutex> LockGuard(consoleLock);
-
 				std::cout << "Received: " << (ReceivedBytes / 1024 / 1024) << "MB\n";
 				tranfer_start2 = std::chrono::high_resolution_clock::now();
 			}
