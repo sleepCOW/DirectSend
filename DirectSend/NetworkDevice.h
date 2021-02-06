@@ -3,7 +3,7 @@
 #include "Common.h"
 #include <iostream>
 
-#define BUFLEN 512
+#define BUFLEN 1024 * 14
 
 class NetworkDevice
 {
