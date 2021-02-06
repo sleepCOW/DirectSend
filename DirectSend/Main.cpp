@@ -201,7 +201,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				{
 					std::lock_guard<mutex> LockGuard(consoleLock);
 
-					std::cout << "Progress: " << (float(CurrentProgress) / float(FileSize)) << "%\n";
+					std::cout << "Progress: " << (float(CurrentProgress) / float(FileSize)) * 100.0f << "%\n";
 					std::cout << "Written : " << (CurrentProgress / 1024 / 1024) << "MB\n";
 					tranfer_start = std::chrono::high_resolution_clock::now();
 				}
