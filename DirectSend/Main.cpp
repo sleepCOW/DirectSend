@@ -134,7 +134,8 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 			if (GetTimePast(tranfer_start).count() > 2000)
 			{
 				SizeLeft.QuadPart += BytesRead;
-				std::cout << "Progress: " << double(SizeLeft.QuadPart) / double(FileSize.QuadPart) * 100.f << "%\n";
+				std::cout << "Progress: " << double(SizeLeft.QuadPart) / double(FileSize.QuadPart) * 100.0 << "%\n";
+				std::cout << "Left MB: " << SizeLeft.QuadPart / 1024 / 1024 << "%\n";
 				tranfer_start = std::chrono::high_resolution_clock::now();
 			}
 		}
@@ -158,7 +159,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	return 0;
 }
 
-DWORD ReceivedBytes = 0;
+unsigned long long ReceivedBytes = 0;
 
 int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 {
@@ -201,7 +202,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				}
 				if (GetTimePast(tranfer_start).count() > 2000)
 				{
-					std::cout << "Progress: " << double(CurrentProgress.QuadPart) / double(FileSize.QuadPart) * 100.f << "%\n";
+					std::cout << "Progress: " << double(CurrentProgress.QuadPart) / double(FileSize.QuadPart) * 100.0 << "%\n";
 					std::cout << "Written : " << (CurrentProgress.QuadPart / 1024 / 1024) << "MB\n";
 					tranfer_start = std::chrono::high_resolution_clock::now();
 				}
