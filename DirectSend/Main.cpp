@@ -70,8 +70,10 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	CutToFileName(FileName);
 	NetDevice.Send(OperationCode::ReceiveFileName, FileName);
 
-	DWORD FileSize = GetFileSize(FileToTransfer, nullptr);
-	DWORD SizeLeft = 0;
+	LARGE_INTEGER FileSize;
+	GetFileSizeEx(FileToTransfer, &FileSize);
+	LARGE_INTEGER SizeLeft;
+	SizeLeft.QuadPart = 0;
 
 	NetDevice.Send(OperationCode::ReceiveFileSize, (char*)&FileSize, sizeof(DWORD));
 
@@ -131,8 +133,8 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 
 			if (GetTimePast(tranfer_start).count() > 2000)
 			{
-				SizeLeft += BytesRead;
-				std::cout << "Progress: " << (float(SizeLeft) / float(FileSize)) * 100.f << "%\n";
+				SizeLeft.QuadPart += BytesRead;
+				std::cout << "Progress: " << (float(SizeLeft.QuadPart) / float(FileSize.QuadPart)) * 100.f << "%\n";
 				tranfer_start = std::chrono::high_resolution_clock::now();
 			}
 		}
@@ -162,8 +164,10 @@ DWORD ReceivedBytes = 0;
 
 int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 {
-	DWORD FileSize = 0;
-	DWORD CurrentProgress = 0;
+	LARGE_INTEGER FileSize;
+	FileSize.QuadPart = 0;
+	LARGE_INTEGER CurrentProgress;
+	CurrentProgress.QuadPart = 0;
 	auto tranfer_start = std::chrono::high_resolution_clock::now();
 	auto tranfer_start2 = std::chrono::high_resolution_clock::now();
 
@@ -192,7 +196,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 			{
 				DWORD BytesWritten;
 				bool bSuccess = WriteFile(File, BufferToWrite->Data, BufferToWrite->Size, &BytesWritten, NULL);
-				CurrentProgress += BytesWritten;
+				CurrentProgress.QuadPart += BytesWritten;
 				if (!bSuccess)
 				{
 					printf("Failed to write to the file: %d\n", GetLastError());
@@ -201,8 +205,8 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				{
 					std::lock_guard<mutex> LockGuard(consoleLock);
 
-					std::cout << "Progress: " << (float(CurrentProgress) / float(FileSize)) << "%\n";
-					std::cout << "Written : " << (CurrentProgress / 1024 / 1024) << "MB\n";
+					std::cout << "Progress: " << (float(CurrentProgress.QuadPart) / float(FileSize.QuadPart)) * 100.f << "%\n";
+					std::cout << "Written : " << (CurrentProgress.QuadPart / 1024 / 1024) << "MB\n";
 					tranfer_start = std::chrono::high_resolution_clock::now();
 				}
 				delete BufferToWrite;
@@ -247,7 +251,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 		}
 		else if (OpCode == OperationCode::ReceiveFileSize)
 		{
-			DWORD* FileSizePtr = (DWORD*)NetDevice.GetData();
+			PLARGE_INTEGER FileSizePtr = (PLARGE_INTEGER)NetDevice.GetData();
 			FileSize = *FileSizePtr;
 		}
 		else if (OpCode == OperationCode::ReceiveFileData)
