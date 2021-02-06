@@ -10,6 +10,7 @@ enum class OperationCode : uint8_t
 {
 	Invalid = 0,
 	ReceiveFileName,
+	ReceiveFileSize,
 	ReceiveFileData,
 	FinishedTransfer
 };

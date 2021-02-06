@@ -73,6 +73,8 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	DWORD FileSize = GetFileSize(FileToTransfer, nullptr);
 	DWORD SizeLeft = 0;
 
+	NetDevice.Send(OperationCode::ReceiveFileSize, (char*)&FileSize, sizeof(DWORD));
+
 	mutex BufferMutex;
 	list<Buffer*> CommonBuffer;
 	bool bTranferFinished = false;
@@ -148,13 +150,17 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 
 int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 {
+	DWORD FileSize = 0;
+	DWORD CurrentProgress = 0;
+	auto tranfer_start = std::chrono::high_resolution_clock::now();
+
 	// receive file name
 	HANDLE File;
 	OperationCode CurrentState = OperationCode::Invalid;
 	mutex BufferMutex;
 	list<Buffer*> CommonBuffer;
 	bool bTranferFinished = false;
-	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File]()
+	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File, &FileSize, &CurrentProgress, &tranfer_start]()
 	{
 		Buffer* BufferToWrite = nullptr;
 		do
@@ -173,9 +179,11 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 			{
 				DWORD BytesWritten;
 				bool bSuccess = WriteFile(File, BufferToWrite->Data, BufferToWrite->Size, &BytesWritten, NULL);
-				if (bSuccess)
+				CurrentProgress += BytesWritten;
+				if (GetTimePast(tranfer_start).count() > 2000)
 				{
-
+					std::cout << "Progress: " << (float(CurrentProgress) / float(FileSize)) << "%\n";
+					tranfer_start = std::chrono::high_resolution_clock::now();
 				}
 				else
 				{
@@ -188,7 +196,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 	};
 	thread WriteFileThread(WriteToFileTask);
 
-	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer](OperationCode OpCode)
+	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer, &FileSize](OperationCode OpCode)
 	{
 		CurrentState = OpCode;
 
@@ -218,6 +226,11 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				printf("Failed to create file: %s with error %d\n", FileName.data(), GetLastError());
 				return GetLastError();
 			}
+		}
+		else if (OpCode == OperationCode::ReceiveFileSize)
+		{
+			DWORD* FileSizePtr = (DWORD*)NetDevice.GetData();
+			FileSize = *FileSizePtr;
 		}
 		else if (OpCode == OperationCode::ReceiveFileData)
 		{
