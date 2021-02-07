@@ -20,7 +20,7 @@ LPWSTR CharToWChar(const char* Str)
 std::string GetFileName(char* FullName)
 {
 	std::string result;
-	int NameStart = strlen(FullName) - 1;
+	size_t NameStart = strlen(FullName) - 1;
 	for (NameStart; NameStart > 0; --NameStart)
 	{
 		if (FullName[NameStart] == '\\' or FullName[NameStart] == '/')
@@ -35,7 +35,7 @@ std::string GetFileName(char* FullName)
 
 void CutToFileName(std::string& FullName)
 {
-	int NameStart = FullName.size() - 1;
+	size_t NameStart = FullName.size() - 1;
 	for (NameStart; NameStart > 0; --NameStart)
 	{
 		if (FullName[NameStart] == '\\' or FullName[NameStart] == '/')
