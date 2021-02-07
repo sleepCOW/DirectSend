@@ -66,6 +66,11 @@ struct LargeInteger
 		Number.QuadPart = 0;
 	}
 
+	LargeInteger(const char* Data)
+	{
+		Number = *(LargeInteger*)Data;
+	}
+
 	LONGLONG ToMB() const { return Number.QuadPart / 1024 / 1024; }
 	LONGLONG ToGB() const { return Number.QuadPart / 1024; }
 
@@ -80,8 +85,6 @@ struct LargeInteger
 
 	LARGE_INTEGER Number;
 };
-
-#define TO_VALUE(Type, Source) *((Type*)Source)
 
 std::chrono::milliseconds GetTimePast(std::chrono::steady_clock::time_point& start);
 

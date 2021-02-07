@@ -54,7 +54,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	LargeInteger FileSize, CurrentProgress;
 	GetFileSizeEx(FileToTransfer, FileSize);
 
-	NetDevice.Send(OperationCode::ReceiveFileSize, (char*)&FileSize, sizeof(DWORD));
+	NetDevice.Send(OperationCode::ReceiveFileSize, (char*)&FileSize, sizeof(FileSize));
 
 	mutex BufferMutex;
 	list<Buffer*> CommonBuffer;
@@ -213,7 +213,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 		}
 		else if (OpCode == OperationCode::ReceiveFileSize)
 		{
-			FileSize = TO_VALUE(LargeInteger, NetDevice.GetData());
+			FileSize = NetDevice.GetData();
 		}
 		else if (OpCode == OperationCode::ReceiveFileData)
 		{
@@ -274,7 +274,7 @@ int ServerMain(int Argc, char* Argv[])
 
 	if (Port.empty())
 	{
-		std::cout << "Portmust be specified!" << std::endl;
+		std::cout << "Port must be specified!" << std::endl;
 		return -1;
 	}
 
@@ -284,7 +284,7 @@ int ServerMain(int Argc, char* Argv[])
 		return -1;
 	}
 
-	std::cout << "Openning connection for port: " << Port << "\n"
+	std::cout << "Opening connection for port: " << Port << "\n"
 			  << "Getting ready to " << Mode << "\n";
 
 	Server DServer{ string(Port) };
