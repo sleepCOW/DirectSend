@@ -36,12 +36,12 @@ bool NetworkDevice::Send(OperationCode OpCode)
 
 bool NetworkDevice::Send(OperationCode OpCode, std::string& Data)
 {
-	return Send_Internal(OpCode, Data.data(), Data.size());
+	return Send_Internal(OpCode, Data.data(), static_cast<uint16_t>(Data.size()));
 }
 
 bool NetworkDevice::Send(OperationCode OpCode, const char* Data)
 {
-	return Send_Internal(OpCode, Data, strlen(Data));
+	return Send_Internal(OpCode, Data, static_cast<uint16_t>(strlen(Data)));
 }
 
 bool NetworkDevice::Send(OperationCode OpCode, uint16_t NumberOfBytesToSend)

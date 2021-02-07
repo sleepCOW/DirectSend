@@ -76,7 +76,7 @@ struct LargeInteger
 
 	operator LARGE_INTEGER() const { return Number; }
 	operator PLARGE_INTEGER() const { return PLARGE_INTEGER(this); }
-	operator double() const { return Number.QuadPart; }
+	operator double() const { return static_cast<double>(Number.QuadPart); }
 
 	LARGE_INTEGER Number;
 };
@@ -94,7 +94,10 @@ bool EachNSeconds(float Seconds)
 {
 	static TimePoint Start = std::chrono::high_resolution_clock::now();
 	TimePoint Stop = std::chrono::high_resolution_clock::now();
-	return std::chrono::duration_cast<std::chrono::seconds>(Stop - Start).count() > Seconds;
+	bool bResult = std::chrono::duration_cast<std::chrono::seconds>(Stop - Start).count() > Seconds;
+	if (bResult)
+		Start = std::chrono::high_resolution_clock::now();
+	return bResult;
 }
 
 #define EACH_N_SECONDS(Seconds) EachNSeconds<__LINE__>(Seconds)

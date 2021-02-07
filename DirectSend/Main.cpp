@@ -100,7 +100,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 
 			{
 				lock_guard<mutex> Lock(BufferMutex);
-				Buffer* NewBuffer = new Buffer(BytesRead);
+				Buffer* NewBuffer = new Buffer(uint16_t(BytesRead));
 				memcpy(NewBuffer->Data, Data, BytesRead);
 				CommonBuffer.push_back(NewBuffer);
 				CurrentProgress += BytesRead;
@@ -114,7 +114,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 		}
 		else if (ReadResult == false)
 		{
-			printf("Read failed: %d\n", GetLastError());
+			std::cerr << "Read failed: " << GetLastError() << "\n";
 			CloseHandle(FileToTransfer);
 			return GetLastError();
 		}
@@ -167,7 +167,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				CurrentProgress += BytesWritten;
 				if (!bSuccess)
 				{
-					printf("Failed to write to the file: %d\n", GetLastError());
+					std::cerr << "Failed to write to the file: " << GetLastError() << "\n";
 				}
 				if (EACH_N_SECONDS(2))
 				{
@@ -205,7 +205,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 
 			if (File == INVALID_HANDLE_VALUE)
 			{
-				printf("Failed to create file: %s with error %d\n", FileName.data(), GetLastError());
+				std::cerr << "Failed to create file: " << FileName.data() << " with error: "<< GetLastError() << "\n";
 				return;
 			}
 			MemoryBarrier();
