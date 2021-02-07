@@ -8,21 +8,18 @@
 #include <chrono>
 #include <fileapi.h>
 
-// Port, File and Pass must be specified!
-constexpr int AllRequiredArguments = 6;
-constexpr size_t BufferLength = 512;
-
 int ServerMain(int Argc, char* Argv[]);
 int ClientMain(int Argc, char* Argv[]);
 
 using std::string;
-using std::thread;
 using std::list;
 using std::mutex;
+using std::lock_guard;
+using Thread = std::thread;
 
 int main(int argc, char* argv[])
 {
-	if (argc < 2)
+	if (argc < 3)
 	{
 		std::cout << "SPECIFY MODE!\n";
 		return -1;
@@ -40,22 +37,6 @@ int main(int argc, char* argv[])
 	return -1;
 }
 
-struct Buffer
-{
-	char* Data;
-	uint16_t Size = 0;
-
-	Buffer(uint16_t _Size) : Size(_Size)
-	{
-		Data = new char[Size];
-	}
-
-	~Buffer()
-	{
-		delete[] Data;
-	}
-};
-
 int SendFile(NetworkDevice& NetDevice, string& FileName)
 {
 	// Open a file, also lock file until transfer is done (accept only reading for other processes)
@@ -63,17 +44,15 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 
 	if (FileToTransfer == INVALID_HANDLE_VALUE)
 	{
-		printf("Failed to open file: %d\n", GetLastError());
+		std::cerr << "Failed to open file: " << GetLastError() << std::endl;
 		return GetLastError();
 	}
 
 	CutToFileName(FileName);
 	NetDevice.Send(OperationCode::ReceiveFileName, FileName);
 
-	LARGE_INTEGER FileSize;
-	GetFileSizeEx(FileToTransfer, &FileSize);
-	LARGE_INTEGER CurrentProgress;
-	CurrentProgress.QuadPart = 0;
+	LargeInteger FileSize, CurrentProgress;
+	GetFileSizeEx(FileToTransfer, FileSize);
 
 	NetDevice.Send(OperationCode::ReceiveFileSize, (char*)&FileSize, sizeof(DWORD));
 
@@ -86,7 +65,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 		do 
 		{
 			{
-				std::lock_guard<mutex> LockGuard(BufferMutex);
+				lock_guard<mutex> LockGuard(BufferMutex);
 
 				if (not CommonBuffer.empty())
 				{
@@ -103,40 +82,34 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 			}
 		} while (not bTranferFinished || not CommonBuffer.empty());
 	};
-	thread FileThread(SendFileData);
-
+	Thread FileThread(SendFileData);
+	
 	// Read bytes and send until file end
 	DWORD BytesRead;
 	bool ReadResult = false;
 	char* Data = NetDevice.GetData();
-	auto start = std::chrono::high_resolution_clock::now();
-	auto tranfer_start = std::chrono::high_resolution_clock::now();
+	TimePoint TransferStart = std::chrono::high_resolution_clock::now();
 	do {
 		ReadResult = ReadFile(FileToTransfer, Data, NetDevice.GetBufferSize(), &BytesRead, NULL);
 		if (ReadResult and BytesRead > 0)
 		{
-		tryAgainMarker:
+			while (CommonBuffer.size() > 10000)
 			{
-				BufferMutex.lock();
-				if (CommonBuffer.size() > 10000)
-				{
-					BufferMutex.unlock();
-					Sleep(3 * 1000); 
-					goto tryAgainMarker;
-				}
+				Sleep(3 * 1000);
+			} 
 
+			{
+				lock_guard<mutex> Lock(BufferMutex);
 				Buffer* NewBuffer = new Buffer(BytesRead);
 				memcpy(NewBuffer->Data, Data, BytesRead);
 				CommonBuffer.push_back(NewBuffer);
-				BufferMutex.unlock();
-				CurrentProgress.QuadPart += BytesRead;
+				CurrentProgress += BytesRead;
 			}
 
-			if (GetTimePast(tranfer_start).count() > 2000)
+			if (EACH_N_SECONDS(2))
 			{
-				std::cout << "Progress: " << double(CurrentProgress.QuadPart) / double(FileSize.QuadPart) * 100.0 << "% " 
-						  << CurrentProgress.QuadPart / 1024 / 1024 << "/" << FileSize.QuadPart / 1024 / 1024 << "MB\n";
-				tranfer_start = std::chrono::high_resolution_clock::now();
+				std::cout << "Progress: " << CurrentProgress / FileSize * 100.0 << "% " 
+						  << CurrentProgress.ToMB() << "/" << FileSize.ToMB() << "MB\n";
 			}
 		}
 		else if (ReadResult == false)
@@ -152,7 +125,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	Sleep(4000);
 
 	// Record end time
-	std::cout << "Transfer is finished in " << GetTimePast(start).count() << std::endl;
+	std::cout << "Transfer is finished in " << GetTimePast(TransferStart).count() << std::endl;
 
 	// Close File
 	CloseHandle(FileToTransfer);
@@ -163,12 +136,8 @@ unsigned long long ReceivedBytes = 0;
 
 int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 {
-	LARGE_INTEGER FileSize;
-	FileSize.QuadPart = 0;
-	LARGE_INTEGER CurrentProgress;
-	CurrentProgress.QuadPart = 0;
-	auto tranfer_start = std::chrono::high_resolution_clock::now();
-	auto tranfer_start2 = std::chrono::high_resolution_clock::now();
+	LargeInteger FileSize;
+	LargeInteger CurrentProgress;
 
 	// receive file name
 	HANDLE File;
@@ -176,13 +145,13 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 	mutex BufferMutex;
 	list<Buffer*> CommonBuffer;
 	bool bTranferFinished = false;
-	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File, &FileSize, &CurrentProgress, &tranfer_start]()
+	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File, &FileSize, &CurrentProgress]()
 	{
 		Buffer* BufferToWrite = nullptr;
 		do
 		{
 			{
-				std::lock_guard<mutex> LockGuard(BufferMutex);
+				lock_guard<mutex> LockGuard(BufferMutex);
 
 				if (not CommonBuffer.empty())
 				{
@@ -195,32 +164,28 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 			{
 				DWORD BytesWritten;
 				bool bSuccess = WriteFile(File, BufferToWrite->Data, BufferToWrite->Size, &BytesWritten, NULL);
-				CurrentProgress.QuadPart += BytesWritten;
+				CurrentProgress += BytesWritten;
 				if (!bSuccess)
 				{
 					printf("Failed to write to the file: %d\n", GetLastError());
 				}
-				if (GetTimePast(tranfer_start).count() > 2000)
+				if (EACH_N_SECONDS(2))
 				{
-					std::cout << "Progress: " << double(CurrentProgress.QuadPart) / double(FileSize.QuadPart) * 100.0 << "%\n";
-					std::cout << "Written : " << (CurrentProgress.QuadPart / 1024 / 1024) << "MB\n";
-					tranfer_start = std::chrono::high_resolution_clock::now();
+					std::cout << "Progress: " << CurrentProgress / FileSize * 100.0 << "%  |  " 
+							  << CurrentProgress.ToMB() << "/" << FileSize.ToMB() << " MB\n";
 				}
 				delete BufferToWrite;
 				BufferToWrite = nullptr;
 			}
 		} while (not bTranferFinished || not CommonBuffer.empty());
 	};
-	thread WriteFileThread(WriteToFileTask);
+	Thread WriteFileThread(WriteToFileTask);
 
-	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer, &FileSize, &tranfer_start2](OperationCode OpCode)
+	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer, &FileSize](OperationCode OpCode)
 	{
 		CurrentState = OpCode;
 
-		if (OpCode == OperationCode::Invalid)
-		{
-		}
-		else if (OpCode == OperationCode::ReceiveFileName)
+		if (OpCode == OperationCode::ReceiveFileName)
 		{
 			if (Path.empty())
 			{
@@ -248,31 +213,24 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 		}
 		else if (OpCode == OperationCode::ReceiveFileSize)
 		{
-			PLARGE_INTEGER FileSizePtr = (PLARGE_INTEGER)NetDevice.GetData();
-			FileSize = *FileSizePtr;
+			FileSize = TO_VALUE(LargeInteger, NetDevice.GetData());
 		}
 		else if (OpCode == OperationCode::ReceiveFileData)
 		{
 			int ReceivedBytesNow = NetDevice.GetBytesReceived();
 			ReceivedBytes += ReceivedBytesNow;
 			{
-				std::lock_guard<mutex> Lock(BufferMutex);
+				lock_guard<mutex> Lock(BufferMutex);
 
 				Buffer* NewBuffer = new Buffer(ReceivedBytesNow);
 				memcpy(NewBuffer->Data, NetDevice.GetData(), NewBuffer->Size);
 				CommonBuffer.push_back(NewBuffer);
 			}
-
-			if (GetTimePast(tranfer_start2).count() > 2000)
-			{
-				std::cout << "Received: " << (ReceivedBytes / 1024 / 1024) << "MB\n";
-				tranfer_start2 = std::chrono::high_resolution_clock::now();
-			}
 		}
 		else if (OpCode == OperationCode::FinishedTransfer)
 		{
 			bTranferFinished = true;
-			std::string Received(NetDevice.GetData(), NetDevice.GetBytesReceived());
+			string Received(NetDevice.GetData(), NetDevice.GetBytesReceived());
 			std::cout << Received << "\n";
 		}
 		else
