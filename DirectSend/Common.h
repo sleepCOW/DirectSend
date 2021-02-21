@@ -59,31 +59,52 @@ protected:
 	SOCKET m_Socket;
 };
 
+struct FileHandle
+{
+	FileHandle(HANDLE Handle) : m_Handle(Handle) {}
+	~FileHandle() { CloseHandle(m_Handle); }
+
+	void operator=(HANDLE Handle)
+	{
+		if (m_Handle != nullptr)
+			CloseHandle(m_Handle);
+
+		m_Handle = Handle;
+	}
+
+	operator HANDLE() const { return m_Handle; }
+
+	HANDLE m_Handle;
+};
+
 struct LargeInteger
 {
 	LargeInteger(int64_t Value = 0)
 	{
-		Number.QuadPart = 0;
+		m_Number.QuadPart = 0;
 	}
 
 	LargeInteger(const char* Data)
 	{
-		Number = *(LargeInteger*)Data;
+		m_Number = *(LargeInteger*)Data;
 	}
 
-	LONGLONG ToMB() const { return Number.QuadPart / 1024 / 1024; }
-	LONGLONG ToGB() const { return Number.QuadPart / 1024; }
+	LONGLONG ToMB() const { return m_Number.QuadPart / 1024 / 1024; }
+	double ToMBd() const { return double(m_Number.QuadPart) / 1024. / 1024.; }
+	LONGLONG ToGB() const { return m_Number.QuadPart / 1024 / 1024 / 1024; }
+	double ToGBd() const { return double(m_Number.QuadPart) / 1024. / 1024. / 1024.; }
 
-	void operator +=(LONGLONG Value) { Number.QuadPart += Value; }
-	void operator -=(LONGLONG Value) { Number.QuadPart -= Value; }
-	LargeInteger operator +(LONGLONG Value) { return Number.QuadPart -= Value; }
-	LargeInteger operator -(LONGLONG Value) { return Number.QuadPart -= Value; }
+	void operator +=(LONGLONG Value) { m_Number.QuadPart += Value; }
+	void operator -=(LONGLONG Value) { m_Number.QuadPart -= Value; }
+	LargeInteger operator +(LONGLONG Value) { return m_Number.QuadPart -= Value; }
+	LargeInteger operator -(LONGLONG Value) { return m_Number.QuadPart -= Value; }
 
-	operator LARGE_INTEGER() const { return Number; }
+	operator LARGE_INTEGER() const { return m_Number; }
 	operator PLARGE_INTEGER() const { return PLARGE_INTEGER(this); }
-	operator double() const { return static_cast<double>(Number.QuadPart); }
+	operator char*() const { return (char*)(this); }
+	operator double() const { return static_cast<double>(m_Number.QuadPart); }
 
-	LARGE_INTEGER Number;
+	LARGE_INTEGER m_Number;
 };
 
 std::chrono::milliseconds GetTimePast(std::chrono::steady_clock::time_point& start);

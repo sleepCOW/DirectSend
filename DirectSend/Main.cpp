@@ -4,6 +4,7 @@
 #include <thread>
 #include <list>
 #include <mutex>
+#include "ProgressBar.h"
 
 #include <chrono>
 #include <fileapi.h>
@@ -16,6 +17,7 @@ using std::list;
 using std::mutex;
 using std::lock_guard;
 using Thread = std::thread;
+
 
 int main(int argc, char* argv[])
 {
@@ -40,7 +42,7 @@ int main(int argc, char* argv[])
 int SendFile(NetworkDevice& NetDevice, string& FileName)
 {
 	// Open a file, also lock file until transfer is done (accept only reading for other processes)
-	HANDLE FileToTransfer = CreateFile(CharToWChar(FileName.data()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	FileHandle FileToTransfer = CreateFile(CharToWChar(FileName.data()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
 	if (FileToTransfer == INVALID_HANDLE_VALUE)
 	{
@@ -51,10 +53,12 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	CutToFileName(FileName);
 	NetDevice.Send(OperationCode::ReceiveFileName, FileName);
 
-	LargeInteger FileSize, CurrentProgress;
+	LargeInteger FileSize;
 	GetFileSizeEx(FileToTransfer, FileSize);
+	ProgressBar Bar(L"Upload: ", 20);
+	Bar.SetFileSize(FileSize);
 
-	NetDevice.Send(OperationCode::ReceiveFileSize, (char*)&FileSize, sizeof(FileSize));
+	NetDevice.Send(OperationCode::ReceiveFileSize, FileSize, sizeof(FileSize));
 
 	mutex BufferMutex;
 	list<Buffer*> CommonBuffer;
@@ -103,23 +107,22 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 				Buffer* NewBuffer = new Buffer(uint16_t(BytesRead));
 				memcpy(NewBuffer->Data, Data, BytesRead);
 				CommonBuffer.push_back(NewBuffer);
-				CurrentProgress += BytesRead;
+				Bar += BytesRead;
 			}
 
-			if (EACH_N_SECONDS(2))
+			if (EACH_N_SECONDS(1))
 			{
-				std::cout << "Progress: " << CurrentProgress / FileSize * 100.0 << "% " 
-						  << CurrentProgress.ToMB() << "/" << FileSize.ToMB() << "MB\n";
+				Bar.Print();
 			}
 		}
 		else if (ReadResult == false)
 		{
 			std::cerr << "Read failed: " << GetLastError() << "\n";
-			CloseHandle(FileToTransfer);
 			return GetLastError();
 		}
 	} while (ReadResult and BytesRead == NetDevice.GetBufferSize());
 	bTranferFinished = true;
+	Bar.Print();
 	FileThread.join();
 	NetDevice.Send(OperationCode::FinishedTransfer, "Gratz!");
 	Sleep(4000);
@@ -127,8 +130,6 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	// Record end time
 	std::cout << "Transfer is finished in " << GetTimePast(TransferStart).count() << std::endl;
 
-	// Close File
-	CloseHandle(FileToTransfer);
 	return 0;
 }
 
@@ -136,16 +137,14 @@ unsigned long long ReceivedBytes = 0;
 
 int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 {
-	LargeInteger FileSize;
-	LargeInteger CurrentProgress;
-
-	// receive file name
-	HANDLE File;
+	FileHandle File(nullptr);
+	ProgressBar Bar(L"Download: ", 20);
 	OperationCode CurrentState = OperationCode::Invalid;
 	mutex BufferMutex;
 	list<Buffer*> CommonBuffer;
 	bool bTranferFinished = false;
-	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File, &FileSize, &CurrentProgress]()
+
+	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File, &Bar]()
 	{
 		Buffer* BufferToWrite = nullptr;
 		do
@@ -164,15 +163,14 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 			{
 				DWORD BytesWritten;
 				bool bSuccess = WriteFile(File, BufferToWrite->Data, BufferToWrite->Size, &BytesWritten, NULL);
-				CurrentProgress += BytesWritten;
+				Bar += BytesWritten;
 				if (!bSuccess)
 				{
 					std::cerr << "Failed to write to the file: " << GetLastError() << "\n";
 				}
-				if (EACH_N_SECONDS(2))
+				if (EACH_N_SECONDS(1))
 				{
-					std::cout << "Progress: " << CurrentProgress / FileSize * 100.0 << "%  |  " 
-							  << CurrentProgress.ToMB() << "/" << FileSize.ToMB() << " MB\n";
+					Bar.Print();
 				}
 				delete BufferToWrite;
 				BufferToWrite = nullptr;
@@ -181,7 +179,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 	};
 	Thread WriteFileThread(WriteToFileTask);
 
-	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer, &FileSize](OperationCode OpCode)
+	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer, &Bar](OperationCode OpCode)
 	{
 		CurrentState = OpCode;
 
@@ -213,7 +211,8 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 		}
 		else if (OpCode == OperationCode::ReceiveFileSize)
 		{
-			FileSize = NetDevice.GetData();
+			LargeInteger FileSize = NetDevice.GetData();
+			Bar.SetFileSize(FileSize);
 		}
 		else if (OpCode == OperationCode::ReceiveFileData)
 		{
@@ -230,8 +229,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 		else if (OpCode == OperationCode::FinishedTransfer)
 		{
 			bTranferFinished = true;
-			string Received(NetDevice.GetData(), NetDevice.GetBytesReceived());
-			std::cout << Received << "\n";
+			Bar.Print();
 		}
 		else
 		{
@@ -245,7 +243,6 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 	bool bResult = NetDevice.Listen(WriteToFile, WhileJobNotFinished);
 	WriteFileThread.join();
 
-	CloseHandle(File);
 	return !bResult;
 }
 
