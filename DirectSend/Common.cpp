@@ -3,7 +3,7 @@
 std::chrono::milliseconds GetTimePast(std::chrono::steady_clock::time_point& start)
 {
 	auto stop = std::chrono::high_resolution_clock::now();
-	return std::chrono::duration_cast<std::chrono::milliseconds>(stop - start);
+	return std::chrono::duration_cast<std::chrono::seconds>(stop - start);
 }
 
 LPWSTR CharToWChar(const char* Str)

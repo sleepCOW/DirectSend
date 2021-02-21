@@ -9,38 +9,105 @@
 #include <chrono>
 #include <fileapi.h>
 
-int ServerMain(int Argc, char* Argv[]);
-int ClientMain(int Argc, char* Argv[]);
-
 using std::string;
 using std::list;
 using std::mutex;
 using std::lock_guard;
 using Thread = std::thread;
 
+struct CMDArgs
+{
+	string Role;
+	string Mode;
+	string FileName;
+	string Path;
+	string Ip;
+	string Port;
+};
+
+const char* Usage =
+"-----------------------------------HOW TO-----------------------------------n"
+"Specify your role as the first argument: \'server\' or \'client\'\n"
+"Next specify mode of usage: \'send\' or \'receive\'\n"
+"If you are a client you need to specify \'-ip\' and \'-port\' of server\n"
+"If you are a server you only need to specify \'-port\' on which connection should be established\n"
+"With \'send\' mode you have to specify \'-file\' to send\n"
+"With \'receive\' mode you can specify \'-path\' where to store received file, if you leave this empty it will save in current directory\n"
+"Examples:\n"
+"client receive -ip 192.168.1.1 -port 5666 -path \"S:\\Folder\"\n"
+"server send -port 5666 -file \"S:\\Folder\\Archive.zip\"\n";
+
+void FillArguments(CMDArgs& Args, int Argc, char* Argv[])
+{
+	auto ReadArgument = [Argv](const char* ArgumentName, int& Index, string& OutArgument)
+	{
+		if (strcmp(Argv[Index], ArgumentName) == 0)
+		{
+			++Index;
+			OutArgument = Argv[Index];
+		}
+	};
+
+	for (int i = 1; i < Argc; ++i)
+	{
+		ReadArgument("-ip", i, Args.Ip);
+		ReadArgument("-port", i, Args.Port);
+		ReadArgument("-path", i, Args.Path);
+		ReadArgument("-file", i, Args.FileName);
+	}
+}
+
+int SendFile(NetworkDevice& NetDevice, string& FileName);
+int ReceiveFile(NetworkDevice& NetDevice, string& Path);
 
 int main(int argc, char* argv[])
 {
-	if (argc < 3)
+	if (argc < 6)
 	{
-		std::cout << "SPECIFY MODE!\n";
+		std::cerr << Usage;
 		return -1;
 	}
 
-	if (strcmp(argv[1], "server") == 0)
+	CMDArgs Args;
+	Args.Role = argv[1];
+	Args.Mode = argv[2];
+
+	FillArguments(Args, argc, argv);
+
+	NetworkDevice* NetDevice = nullptr;
+	// Create proper netdevice
+	if (Args.Role == "client")
 	{
-		return ServerMain(argc, argv);
+		NetDevice = new Client(Args.Ip, Args.Port);
 	}
-	else if (strcmp(argv[1], "client") == 0)
+	else if (Args.Role == "server")
 	{
-		return ClientMain(argc, argv);
+		NetDevice = new Server(Args.Port);
+	}
+	else
+	{
+		std::cerr << "Wrong role!!!!!!\n\n" << Usage;
+		return -1;
 	}
 
+	// send or receive file depending on mode
+	if (Args.Mode == "send")
+	{
+		return SendFile(*NetDevice, Args.FileName);
+	}
+	else
+	{
+		return ReceiveFile(*NetDevice, Args.Path);
+	}
+
+	std::cerr << "Wrong role or mode!!!!!!\n\n" << Usage;
 	return -1;
 }
 
 int SendFile(NetworkDevice& NetDevice, string& FileName)
 {
+	std::cout << "Getting ready to send " << FileName << "\n";
+
 	// Open a file, also lock file until transfer is done (accept only reading for other processes)
 	FileHandle FileToTransfer = CreateFile(CharToWChar(FileName.data()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
@@ -128,12 +195,10 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	Sleep(4000);
 
 	// Record end time
-	std::cout << "Transfer is finished in " << GetTimePast(TransferStart).count() << std::endl;
+	std::cout << "Transfer is finished in " << GetTimePast(TransferStart).count() << " seconds!" << std::endl;
 
 	return 0;
 }
-
-unsigned long long ReceivedBytes = 0;
 
 int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 {
@@ -143,6 +208,8 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 	mutex BufferMutex;
 	list<Buffer*> CommonBuffer;
 	bool bTranferFinished = false;
+
+	std::cout << "Getting ready to receive file" << "\n";
 
 	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File, &Bar]()
 	{
@@ -197,6 +264,8 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 			string FileName(NetDevice.GetData(), NetDevice.GetBytesReceived());
 			Path.append(FileName);
 
+			std::cout << "Receiving file: " << FileName << "\n";
+
 			LPWSTR WFileName = CharToWChar(Path.data());
 			File = CreateFile(WFileName, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 			delete[] WFileName;
@@ -217,7 +286,6 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 		else if (OpCode == OperationCode::ReceiveFileData)
 		{
 			int ReceivedBytesNow = NetDevice.GetBytesReceived();
-			ReceivedBytes += ReceivedBytesNow;
 			{
 				lock_guard<mutex> Lock(BufferMutex);
 
@@ -244,100 +312,4 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 	WriteFileThread.join();
 
 	return !bResult;
-}
-
-int ServerMain(int Argc, char* Argv[])
-{
-	string Port, FileName, Mode, Path;
-
-	Mode = Argv[2];
-
-	auto TryReadArg = [Argv](const char* ArgumentName, int& Index, string& Output)
-	{
-		if (strcmp(Argv[Index], ArgumentName) == 0)
-		{
-			++Index;
-			Output = Argv[Index];
-		}
-	};
-	for (int i = 1; i < Argc; ++i)
-	{
-		char* Argument = Argv[i];
-
-		TryReadArg("-port", i, Port);
-		TryReadArg("-path", i, Path);
-		TryReadArg("-file", i, FileName);
-	}
-
-	if (Port.empty())
-	{
-		std::cout << "Port must be specified!" << std::endl;
-		return -1;
-	}
-
-	if (Mode != "send" and Mode != "receive")
-	{
-		std::cout << "Mode must be specified!" << std::endl;
-		return -1;
-	}
-
-	std::cout << "Opening connection for port: " << Port << "\n"
-			  << "Getting ready to " << Mode << "\n";
-
-	Server DServer{ string(Port) };
-	if (Mode == "send")
-	{
-		return SendFile(DServer, FileName);
-	}
-	else
-	{
-		return ReceiveFile(DServer, Path);
-	}
-}
-
-int ClientMain(int Argc, char* Argv[])
-{
-	using std::string;
-    string Ip, Port, Path, Mode, FileName;
-
-	Mode = Argv[2];
-
-	auto TryReadArg = [Argv](const char* ArgumentName, int& Index, string& Output)
-	{
-		if (strcmp(Argv[Index], ArgumentName) == 0)
-		{
-			++Index;
-			Output = Argv[Index];
-		}
-	};
-
-    for (int i = 1; i < Argc; ++i)
-    {
-		TryReadArg("-port", i, Port);
-		TryReadArg("-path", i, Path);
-		TryReadArg("-ip", i, Ip);
-		TryReadArg("-file", i, FileName);
-    }
-
-    if (Ip.empty() or Port.empty())
-    {
-        std::cout << "Ip and Port must be specified!\n";
-        return -1;
-    }
-
-	if (Mode != "send" and Mode != "receive")
-	{
-		std::cout << "Mode must be specified!" << std::endl;
-		return -1;
-	}
-
-    Client DClient{ Ip, Port };
-	if (Mode == "send")
-	{
-		return SendFile(DClient, FileName);
-	}
-	else
-	{
-		return ReceiveFile(DClient, Path);
-	}
 }

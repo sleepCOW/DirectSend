@@ -16,7 +16,7 @@ ProgressBar::ProgressBar(std::wstring InitialText, size_t BarSize) : Text(Initia
 
 	PositionToWrite = ScreenBufferInfo.dwCursorPosition;
 	
-	// Add new line for ProgressBar couldn't overwrite useful log
+	// Add new line so ProgressBar couldn't overwrite useful log
 	std::cout << "\n";
 
 	BarInfo.BarSize = BarSize;
