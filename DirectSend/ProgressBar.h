@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Helpers.h"
 #include "Common.h"
 
 /**

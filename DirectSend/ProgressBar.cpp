@@ -7,7 +7,7 @@ ProgressBar::ProgressBar(std::wstring InitialText, size_t BarSize) : Text(Initia
 
 	if (!ConsoleHandle)
 	{
-		std::cerr << "ProgressBar can't GetStdHandle error = " << GetLastError() << std::endl;
+		CMD::PrintError() << "ProgressBar can't GetStdHandle error = " << GetLastError() << std::endl;
 		return;
 	}
 
@@ -17,7 +17,7 @@ ProgressBar::ProgressBar(std::wstring InitialText, size_t BarSize) : Text(Initia
 	PositionToWrite = ScreenBufferInfo.dwCursorPosition;
 	
 	// Add new line so ProgressBar couldn't overwrite useful log
-	std::cout << "\n";
+	CMD::Print() << "\n";
 
 	BarInfo.BarSize = BarSize;
 	Text.push_back('[');
@@ -62,7 +62,7 @@ void ProgressBar::Print()
 
 	if (!WriteConsoleOutputCharacter(ConsoleHandle, Text.data(), Text.size(), PositionToWrite, &Written))
 	{
-		std::cout << GetLastError() << std::endl;
+		CMD::Print() << GetLastError() << std::endl;
 	}
 
 	double Percent = (CurrentProgress / TotalSize) * 100.;
@@ -73,7 +73,7 @@ void ProgressBar::Print()
 
 	if (!WriteConsoleOutputCharacter(ConsoleHandle, Str, StrSize, PercentToWrite, &Written))
 	{
-		std::cout << GetLastError() << std::endl;
+		CMD::Print() << GetLastError() << std::endl;
 	}
 }
 

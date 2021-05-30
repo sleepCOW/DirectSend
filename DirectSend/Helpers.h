@@ -1,16 +1,16 @@
 #pragma once
 
-#include <utility>
-#include <array>
 #include <exception>
+
+#include "Types.h"
 
 /**
  * Compile time map with the std::map like functionality
  */
-template<typename Key, typename Value, std::size_t Size>
+template<typename Key, typename Value, SizeT Size>
 struct ConstexprMap
 {
-	std::array<std::pair<Key, Value>, Size> Data;
+	Array<Pair<Key, Value>, Size> Data;
 
 	constexpr Value At(const Key& InKey) const
 	{
@@ -26,3 +26,9 @@ struct ConstexprMap
 		}
 	}
 };
+
+namespace CMD
+{
+	OStream& Print();
+	OStream& PrintError();
+}

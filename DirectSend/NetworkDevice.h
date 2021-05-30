@@ -1,7 +1,7 @@
 #pragma once
 
+#include "Helpers.h"
 #include "Common.h"
-#include <iostream>
 
 #define BUFLEN 1024 * 16
 
@@ -33,7 +33,7 @@ public:
 	bool Send(OperationCode OpCode, uint16_t NumberOfBytesToSend);
 	bool Send(OperationCode OpCode, const char* Data);
 	bool Send(OperationCode OpCode, const char* Data, uint16_t Size);
-	bool Send(OperationCode OpCode, std::string& Data);
+	bool Send(OperationCode OpCode, String& Data);
 
 	char* GetData();
 	constexpr DWORD GetBufferSize() const { return BUFLEN; }
@@ -91,11 +91,11 @@ bool NetworkDevice::Listen(Func& Function, Cond& Condition)
 			}
 			else if (BytesReceived == 0)
 			{
-				std::cerr << "Connection closing..." << std::endl;
+				CMD::PrintError() << "Connection closing..." << std::endl;
 			}
 			else
 			{
-				std::cerr << "recv failed with error: " << WSAGetLastError() << std::endl;
+				CMD::PrintError() << "recv failed with error: " << WSAGetLastError() << std::endl;
 				return false;
 			}
 

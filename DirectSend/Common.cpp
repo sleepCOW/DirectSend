@@ -17,9 +17,9 @@ LPWSTR CharToWChar(const char* Str)
 	return WideStr;
 }
 
-std::string GetFileName(char* FullName)
+String GetFileName(char* FullName)
 {
-	std::string result;
+	String result;
 	size_t NameStart = strlen(FullName) - 1;
 	for (NameStart; NameStart > 0; --NameStart)
 	{
@@ -33,7 +33,7 @@ std::string GetFileName(char* FullName)
 	return result;
 }
 
-void CutToFileName(std::string& FullName)
+void CutToFileName(String& FullName)
 {
 	size_t NameStart = FullName.size() - 1;
 	for (NameStart; NameStart > 0; --NameStart)

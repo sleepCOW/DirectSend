@@ -8,16 +8,16 @@
 class Server : public NetworkDevice
 {
 public:
-	Server(std::string Port);
+	Server(String Port);
 };
 
-Server::Server(std::string Port)
+Server::Server(String Port)
 {
 	WSADATA Wsadata;
 	ErrorCode = WSAStartup(MAKEWORD(2, 2), &Wsadata);
 	if (ErrorCode != 0)
 	{
-		std::cerr << "WSAStartup failed: " << ErrorCode << std::endl;
+		CMD::PrintError() << "WSAStartup failed: " << ErrorCode << std::endl;
 		return;
 	}
 	
@@ -33,26 +33,26 @@ Server::Server(std::string Port)
 	ListenSocket = socket(SocketDesc.sin_family, SOCK_STREAM, IPPROTO_TCP);
 
 	if (ListenSocket == INVALID_SOCKET) {
-		std::cerr << "Error at socket(): " << WSAGetLastError << std::endl;
+		CMD::PrintError() << "Error at socket(): " << WSAGetLastError << std::endl;
 		return;
 	}
 	
 	ErrorCode = bind(ListenSocket, (SOCKADDR*)&SocketDesc, sizeof(sockaddr_in));
 	if (ErrorCode == SOCKET_ERROR) {
-		std::cerr << "bind failed with error: " << WSAGetLastError << std::endl;
+		CMD::PrintError() << "bind failed with error: " << WSAGetLastError << std::endl;
 		return;
 	}
 
 	if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR) {
-		std::cerr << "Listen failed with error: " << WSAGetLastError << std::endl;
+		CMD::PrintError() << "Listen failed with error: " << WSAGetLastError << std::endl;
 		return;
 	}
 
 	// Accept a client socket
 	ClientSocket.GetSocket() = accept(ListenSocket, NULL, NULL);
 	if (ClientSocket == INVALID_SOCKET) {
-		std::cerr << "accept failed: " << WSAGetLastError << std::endl;
+		CMD::PrintError() << "accept failed: " << WSAGetLastError << std::endl;
 		return;
 	}
-	std::cout << "Client is connected!\n";
+	CMD::Print() << "Client is connected!\n";
 }

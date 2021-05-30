@@ -5,35 +5,32 @@
 #include <list>
 #include <mutex>
 #include "ProgressBar.h"
-#include "Helpers.h"
 
-#include <string_view>
 #include <chrono>
 #include <fileapi.h>
 
-using std::string;
-using std::list;
-using std::mutex;
-using std::lock_guard;
+using Mutex = std::mutex;
+template <class Mutex>
+using LockGuard = std::lock_guard<Mutex>;
 using Thread = std::thread;
+using namespace std::literals;
 
 struct CMDArgs
 {
-	string Role;
-	string Mode;
-	string FileName;
-	string Path;
-	string Ip;
-	string Port;
+	String Role;
+	String Mode;
+	String FileName;
+	String Path;
+	String Ip;
+	String Port;
 };
 
-using namespace std::literals;
 
-ConstexprMap<std::string_view, int, 10> Errors = {{{
+ConstexprMap<StringView, int, 3> Errors = { {{
 	{"NotEnoughArguments"sv, -1},
 	{"WrongRole", -2},
 	{"WrongMode", -3}
-}}};
+}} };
 
 const char* Usage =
 "-----------------------------------HOW TO-----------------------------------\n"
@@ -49,7 +46,7 @@ const char* Usage =
 
 void FillArguments(CMDArgs& Args, int Argc, char* Argv[])
 {
-	auto ReadArgument = [Argv](const char* ArgumentName, int& Index, string& OutArgument)
+	auto ReadArgument = [Argv](const char* ArgumentName, int& Index, String& OutArgument)
 	{
 		if (strcmp(Argv[Index], ArgumentName) == 0)
 		{
@@ -67,15 +64,15 @@ void FillArguments(CMDArgs& Args, int Argc, char* Argv[])
 	}
 }
 
-int SendFile(NetworkDevice& NetDevice, string& FileName);
-int ReceiveFile(NetworkDevice& NetDevice, string& Path);
+int SendFile(NetworkDevice& NetDevice, String& FileName);
+int ReceiveFile(NetworkDevice& NetDevice, String& Path);
 
 int main(int argc, char* argv[])
 {
 	// At least 6 arguments need to be provided for the program to work, show help if not enough arguments
 	if (argc < 6)
 	{
-		std::cerr << Usage;
+		CMD::PrintError() << Usage;
 		return Errors.At("NotEnoughArguments");
 	}
 
@@ -97,7 +94,7 @@ int main(int argc, char* argv[])
 	}
 	else
 	{
-		std::cerr << "Wrong role!!!!!!\n\n" << Usage;
+		CMD::PrintError() << "Wrong role!!!!!!\n\n" << Usage;
 		return Errors.At("WrongRole");
 	}
 
@@ -111,20 +108,20 @@ int main(int argc, char* argv[])
 		return ReceiveFile(*NetDevice, Args.Path);
 	}
 
-	std::cerr << "Wrong mode!!!!!!\n\n" << Usage;
+	CMD::PrintError() << "Wrong mode!!!!!!\n\n" << Usage;
 	return Errors.At("WrongMode");
 }
 
-int SendFile(NetworkDevice& NetDevice, string& FileName)
+int SendFile(NetworkDevice& NetDevice, String& FileName)
 {
-	std::cout << "Getting ready to send " << FileName << "\n";
+	CMD::Print() << "Getting ready to send " << FileName << "\n";
 
 	// Open a file, also lock file until transfer is done (accept only reading for other processes)
 	FileHandle FileToTransfer = CreateFile(CharToWChar(FileName.data()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
 	if (FileToTransfer == INVALID_HANDLE_VALUE)
 	{
-		std::cerr << "Failed to open file: " << GetLastError() << std::endl;
+		CMD::PrintError() << "Failed to open file: " << GetLastError() << std::endl;
 		return GetLastError();
 	}
 
@@ -138,16 +135,16 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 
 	NetDevice.Send(OperationCode::ReceiveFileSize, FileSize, sizeof(FileSize));
 
-	mutex BufferMutex;
-	list<Buffer*> CommonBuffer;
+	Mutex BufferMutex;
+	List<Buffer*> CommonBuffer;
 	bool bTranferFinished = false;
 	auto SendFileData = [&BufferMutex, &CommonBuffer, &NetDevice, &bTranferFinished]()
 	{
 		Buffer* BufferToWrite = nullptr;
-		do 
+		do
 		{
 			{
-				lock_guard<mutex> LockGuard(BufferMutex);
+				LockGuard<Mutex> LockGuard(BufferMutex);
 
 				if (not CommonBuffer.empty())
 				{
@@ -165,7 +162,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 		} while (not bTranferFinished || not CommonBuffer.empty());
 	};
 	Thread FileThread(SendFileData);
-	
+
 	// Read bytes and send until file end
 	DWORD BytesRead;
 	bool ReadResult = false;
@@ -178,10 +175,10 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 			while (CommonBuffer.size() > 10000)
 			{
 				Sleep(3 * 1000);
-			} 
+			}
 
 			{
-				lock_guard<mutex> Lock(BufferMutex);
+				LockGuard<Mutex> Lock(BufferMutex);
 				Buffer* NewBuffer = new Buffer(uint16_t(BytesRead));
 				memcpy(NewBuffer->Data, Data, BytesRead);
 				CommonBuffer.push_back(NewBuffer);
@@ -195,7 +192,7 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 		}
 		else if (ReadResult == false)
 		{
-			std::cerr << "Read failed: " << GetLastError() << "\n";
+			CMD::PrintError() << "Read failed: " << GetLastError() << "\n";
 			return GetLastError();
 		}
 	} while (ReadResult and BytesRead == NetDevice.GetBufferSize());
@@ -206,21 +203,21 @@ int SendFile(NetworkDevice& NetDevice, string& FileName)
 	Sleep(4000);
 
 	// Record end time
-	std::cout << "Transfer is finished in " << GetTimePast(TransferStart).count() << " seconds!" << std::endl;
+	CMD::Print() << "Transfer is finished in " << GetTimePast(TransferStart).count() << " seconds!" << std::endl;
 
 	return 0;
 }
 
-int ReceiveFile(NetworkDevice& NetDevice, string& Path)
+int ReceiveFile(NetworkDevice& NetDevice, String& Path)
 {
 	FileHandle File(nullptr);
 	ProgressBar Bar(L"Download: ", 20);
 	OperationCode CurrentState = OperationCode::Invalid;
-	mutex BufferMutex;
-	list<Buffer*> CommonBuffer;
+	Mutex BufferMutex;
+	List<Buffer*> CommonBuffer;
 	bool bTranferFinished = false;
 
-	std::cout << "Getting ready to receive file" << "\n";
+	CMD::Print() << "Getting ready to receive file" << "\n";
 
 	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File, &Bar]()
 	{
@@ -228,7 +225,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 		do
 		{
 			{
-				lock_guard<mutex> LockGuard(BufferMutex);
+				LockGuard<Mutex> LockGuard(BufferMutex);
 
 				if (not CommonBuffer.empty())
 				{
@@ -244,7 +241,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				Bar += BytesWritten;
 				if (!bSuccess)
 				{
-					std::cerr << "Failed to write to the file: " << GetLastError() << "\n";
+					CMD::PrintError() << "Failed to write to the file: " << GetLastError() << "\n";
 				}
 				if (EACH_N_SECONDS(1))
 				{
@@ -272,10 +269,10 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 				Path.push_back('\\');
 			}
 
-			string FileName(NetDevice.GetData(), NetDevice.GetBytesReceived());
+			String FileName(NetDevice.GetData(), NetDevice.GetBytesReceived());
 			Path.append(FileName);
 
-			std::cout << "Receiving file: " << FileName << "\n";
+			CMD::Print() << "Receiving file: " << FileName << "\n";
 
 			LPWSTR WFileName = CharToWChar(Path.data());
 			File = CreateFile(WFileName, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -283,7 +280,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 
 			if (File == INVALID_HANDLE_VALUE)
 			{
-				std::cerr << "Failed to create file: " << FileName.data() << " with error: "<< GetLastError() << "\n";
+				CMD::PrintError() << "Failed to create file: " << FileName.data() << " with error: "<< GetLastError() << "\n";
 				return;
 			}
 			MemoryBarrier();
@@ -298,7 +295,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path)
 		{
 			int ReceivedBytesNow = NetDevice.GetBytesReceived();
 			{
-				lock_guard<mutex> Lock(BufferMutex);
+				LockGuard<Mutex> Lock(BufferMutex);
 
 				Buffer* NewBuffer = new Buffer(ReceivedBytesNow);
 				memcpy(NewBuffer->Data, NetDevice.GetData(), NewBuffer->Size);

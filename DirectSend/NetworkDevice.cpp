@@ -1,7 +1,6 @@
 #include "NetworkDevice.h"
 
 #include "stdint.h"
-#include <string>
 #include <array>
 #include <iostream>
 
@@ -34,7 +33,7 @@ bool NetworkDevice::Send(OperationCode OpCode)
 	return Send_Internal(OpCode, Buffer, BUFLEN);
 }
 
-bool NetworkDevice::Send(OperationCode OpCode, std::string& Data)
+bool NetworkDevice::Send(OperationCode OpCode, String& Data)
 {
 	return Send_Internal(OpCode, Data.data(), static_cast<uint16_t>(Data.size()));
 }
@@ -78,7 +77,7 @@ bool NetworkDevice::CheckError(const char* ErrorMsg, int Error) const
 {
 	if (ErrorCode == Error)
 	{
-		std::cerr << ErrorMsg << ": " << WSAGetLastError() << std::endl;
+		CMD::PrintError() << ErrorMsg << ": " << WSAGetLastError() << std::endl;
 		return false;
 	}
 	return true;

@@ -5,6 +5,7 @@
 #include <string>
 #include <chrono>
 #include <ws2tcpip.h>
+#include "Helpers.h"
 
 using TimePoint = std::chrono::steady_clock::time_point;
 
@@ -144,5 +145,5 @@ bool EachNSeconds(float Seconds)
 }
 
 LPWSTR CharToWChar(const char* Str);
-std::string GetFileName(char* FullName);
-void CutToFileName(std::string& FullName);
+String GetFileName(char* FullName);
+void CutToFileName(String& FullName);
