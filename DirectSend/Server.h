@@ -2,7 +2,9 @@
 
 #include "NetworkDevice.h"
 
-// Synchronous TCP Server that listens only 1 client
+/**
+ * Synchronous TCP Server that listens only 1 client
+ */
 class Server : public NetworkDevice
 {
 public:

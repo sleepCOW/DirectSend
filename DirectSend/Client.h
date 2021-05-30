@@ -4,6 +4,9 @@
 
 using Addrinfo = struct addrinfo;
 
+/**
+ * Device that is trying to connect to the provided host(server)
+ */
 class Client : public NetworkDevice
 {
 public:

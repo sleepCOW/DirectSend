@@ -8,6 +8,7 @@
 
 using TimePoint = std::chrono::steady_clock::time_point;
 
+/** Operation code for the package header */
 enum class OperationCode : uint8_t
 {
 	Invalid = 0,
@@ -17,6 +18,7 @@ enum class OperationCode : uint8_t
 	FinishedTransfer
 };
 
+/** Header for all send/received packages */
 struct NetHeader
 {
 	OperationCode OpCode;
@@ -41,6 +43,9 @@ struct Buffer
 
 constexpr WORD HeaderSize = sizeof(NetHeader);
 
+/**
+ * Wrapper for WinApi Socket
+ */
 class Socket
 {
 public:
@@ -59,6 +64,9 @@ protected:
 	SOCKET m_Socket;
 };
 
+/**
+ * Wrapper for WinApi HANDLE
+ */
 struct FileHandle
 {
 	FileHandle(HANDLE Handle) : m_Handle(Handle) {}
@@ -77,6 +85,9 @@ struct FileHandle
 	HANDLE m_Handle;
 };
 
+/**
+ * Wrapper for WinApi LARGE_INTEGER
+ */
 struct LargeInteger
 {
 	LargeInteger(int64_t Value = 0)
@@ -113,6 +124,14 @@ std::chrono::milliseconds GetTimePast(std::chrono::steady_clock::time_point& sta
 #define CONCATENATE(x, y) CONCATENATE_DETAIL(x, y)
 #define MAKE_UNIQUE(x) CONCATENATE(x, __COUNTER__)
 
+/**
+ * Helper macros to perform some action after provided number of seconds
+ * Must be called in a loop/more than once
+ * @Seconds Number of seconds to wait
+ */
+#define EACH_N_SECONDS(Seconds) EachNSeconds<__LINE__>(Seconds)
+
+// #TODO Hide implementation from user
 template <size_t Order>
 bool EachNSeconds(float Seconds)
 {
@@ -123,8 +142,6 @@ bool EachNSeconds(float Seconds)
 		Start = std::chrono::high_resolution_clock::now();
 	return bResult;
 }
-
-#define EACH_N_SECONDS(Seconds) EachNSeconds<__LINE__>(Seconds)
 
 LPWSTR CharToWChar(const char* Str);
 std::string GetFileName(char* FullName);

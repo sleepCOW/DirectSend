@@ -5,15 +5,29 @@
 
 #define BUFLEN 1024 * 16
 
+/**
+ * General network device
+ * Can Listen/Send to the provided socket
+ */
 class NetworkDevice
 {
 public:
 	virtual ~NetworkDevice();
 
+	/**
+	 * Listen to the socket in a sync manner
+	 * @Function - function to perform on received package, must take OperationCode
+	 * @Condition - function to perform check whether we should continue to listening, must take OperationCode
+	 */
 	template <typename Func, typename Cond>
 	bool Listen(Func& Function, Cond& Condition);
 
-	// Send current buffer
+	/**
+	 * Send current buffer
+	 * @OpCode - operation identifier for the package
+	 * NOTE: Send is synchronous operation
+	 * @return true on success, false otherwise
+	 */
 	bool Send(OperationCode OpCode);
 	// Send num of bytes from current buffer
 	bool Send(OperationCode OpCode, uint16_t NumberOfBytesToSend);
@@ -27,7 +41,10 @@ public:
 	int GetErrorCode() const;
 	Socket GetSocket();
 	
-	// Return true if no errors
+	// #TODO: move to private/protected
+	/**
+	 * @return true if no errors
+	 */
 	virtual bool CheckError(const char* ErrorMsg, int Error) const;
 
 private:

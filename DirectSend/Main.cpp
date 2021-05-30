@@ -62,6 +62,7 @@ int ReceiveFile(NetworkDevice& NetDevice, string& Path);
 
 int main(int argc, char* argv[])
 {
+	// At least 6 arguments need to be provided for the program to work, show help if not enough arguments
 	if (argc < 6)
 	{
 		std::cerr << Usage;
@@ -75,7 +76,7 @@ int main(int argc, char* argv[])
 	FillArguments(Args, argc, argv);
 
 	NetworkDevice* NetDevice = nullptr;
-	// Create proper netdevice
+	// Create proper NetworkDevice
 	if (Args.Role == "client")
 	{
 		NetDevice = new Client(Args.Ip, Args.Port);

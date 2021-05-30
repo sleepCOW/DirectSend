@@ -2,8 +2,10 @@
 
 #include "Common.h"
 
-// Upload: [####################]  77%  [4.3/16.5]GB
-
+/**
+ * Command line progress bar that holds information in following format
+ * Upload: [####################]  77%  [4.3/16.5]GB
+ */
 class ProgressBar
 {
 public:
@@ -16,6 +18,7 @@ public:
 	LargeInteger GetCurrentProgress() const;
 	LargeInteger GetTotalSize() const;
 
+	/** Print current progress bar state in formatted manner to the cout stream */
 	void Print();
 
 	void operator+=(LONGLONG AddProgress);
