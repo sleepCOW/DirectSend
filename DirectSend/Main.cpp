@@ -5,7 +5,9 @@
 #include <list>
 #include <mutex>
 #include "ProgressBar.h"
+#include "Helpers.h"
 
+#include <string_view>
 #include <chrono>
 #include <fileapi.h>
 
@@ -25,8 +27,16 @@ struct CMDArgs
 	string Port;
 };
 
+using namespace std::literals;
+
+ConstexprMap<std::string_view, int, 10> Errors = {{{
+	{"NotEnoughArguments"sv, -1},
+	{"WrongRole", -2},
+	{"WrongMode", -3}
+}}};
+
 const char* Usage =
-"-----------------------------------HOW TO-----------------------------------n"
+"-----------------------------------HOW TO-----------------------------------\n"
 "Specify your role as the first argument: \'server\' or \'client\'\n"
 "Next specify mode of usage: \'send\' or \'receive\'\n"
 "If you are a client you need to specify \'-ip\' and \'-port\' of server\n"
@@ -66,7 +76,7 @@ int main(int argc, char* argv[])
 	if (argc < 6)
 	{
 		std::cerr << Usage;
-		return -1;
+		return Errors.At("NotEnoughArguments");
 	}
 
 	CMDArgs Args;
@@ -88,7 +98,7 @@ int main(int argc, char* argv[])
 	else
 	{
 		std::cerr << "Wrong role!!!!!!\n\n" << Usage;
-		return -1;
+		return Errors.At("WrongRole");
 	}
 
 	// send or receive file depending on mode
@@ -101,8 +111,8 @@ int main(int argc, char* argv[])
 		return ReceiveFile(*NetDevice, Args.Path);
 	}
 
-	std::cerr << "Wrong role or mode!!!!!!\n\n" << Usage;
-	return -1;
+	std::cerr << "Wrong mode!!!!!!\n\n" << Usage;
+	return Errors.At("WrongMode");
 }
 
 int SendFile(NetworkDevice& NetDevice, string& FileName)
