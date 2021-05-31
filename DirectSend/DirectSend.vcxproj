@@ -155,6 +155,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="Common.cpp" />
+    <ClCompile Include="DirectSend.cpp" />
     <ClCompile Include="Helpers.cpp" />
     <ClCompile Include="Main.cpp" />
     <ClCompile Include="NetworkDevice.cpp" />
@@ -163,6 +164,7 @@
   <ItemGroup>
     <ClInclude Include="Client.h" />
     <ClInclude Include="Common.h" />
+    <ClInclude Include="DirectSend.h" />
     <ClInclude Include="Helpers.h" />
     <ClInclude Include="NetworkDevice.h" />
     <ClInclude Include="ProgressBar.h" />

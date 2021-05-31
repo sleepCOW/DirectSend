@@ -7,8 +7,6 @@
 #include <ws2tcpip.h>
 #include "Helpers.h"
 
-using TimePoint = std::chrono::steady_clock::time_point;
-
 /** Operation code for the package header */
 enum class OperationCode : uint8_t
 {
