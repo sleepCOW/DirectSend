@@ -1,8 +1,8 @@
 #pragma once
 
-#include <exception>
-
 #include "Types.h"
+
+#include <exception>
 
 /**
  * Compile time map with the std::map like functionality

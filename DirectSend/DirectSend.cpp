@@ -88,109 +88,22 @@ int ReceiveFile(NetworkDevice& NetDevice, String& Path)
 	ProgressBar Bar(L"Download: ", 20);
 	OperationCode CurrentState = OperationCode::Invalid;
 	Mutex BufferMutex;
-	List<Buffer*> CommonBuffer;
-	bool bTranferFinished = false;
+	List<Buffer*> SharedBuffer;
+	bool bTransferFinished = false;
 
 	CMD::Print() << "Getting ready to receive file" << "\n";
 
-	auto WriteToFileTask = [&CommonBuffer, &BufferMutex, &NetDevice, &bTranferFinished, &File, &Bar]()
-	{
-		Buffer* BufferToWrite = nullptr;
-		do
-		{
-			{
-				LockGuard<Mutex> LockGuard(BufferMutex);
+	WriteToFileTask WriteTask(NetDevice, BufferMutex, SharedBuffer, File, Bar, bTransferFinished);
+	Thread WriteFileThread(WriteTask);
 
-				if (not CommonBuffer.empty())
-				{
-					BufferToWrite = CommonBuffer.front();
-					CommonBuffer.pop_front();
-				}
-			}
-
-			if (BufferToWrite != nullptr)
-			{
-				DWORD BytesWritten;
-				bool bSuccess = WriteFile(File, BufferToWrite->Data, BufferToWrite->Size, &BytesWritten, NULL);
-				Bar += BytesWritten;
-				if (!bSuccess)
-				{
-					CMD::PrintError() << "Failed to write to the file: " << GetLastError() << "\n";
-				}
-				if (EACH_N_SECONDS(1))
-				{
-					Bar.Print();
-				}
-				delete BufferToWrite;
-				BufferToWrite = nullptr;
-			}
-		} while (not bTranferFinished || not CommonBuffer.empty());
-	};
-	Thread WriteFileThread(WriteToFileTask);
-
-	auto WriteToFile = [&NetDevice, &Path, &CurrentState, &File, &bTranferFinished, &BufferMutex, &CommonBuffer, &Bar](OperationCode OpCode)
-	{
-		CurrentState = OpCode;
-
-		if (OpCode == OperationCode::ReceiveFileName)
-		{
-			if (Path.empty())
-			{
-				Path = ".\\";
-			}
-			else
-			{
-				Path.push_back('\\');
-			}
-
-			String FileName(NetDevice.GetData(), NetDevice.GetBytesReceived());
-			Path.append(FileName);
-
-			CMD::Print() << "Receiving file: " << FileName << "\n";
-
-			LPWSTR WFileName = CharToWChar(Path.data());
-			File = CreateFile(WFileName, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-			delete[] WFileName;
-
-			if (File == INVALID_HANDLE_VALUE)
-			{
-				CMD::PrintError() << "Failed to create file: " << FileName.data() << " with error: " << GetLastError() << "\n";
-				return;
-			}
-			MemoryBarrier();
-			Sleep(1);
-		}
-		else if (OpCode == OperationCode::ReceiveFileSize)
-		{
-			LargeInteger FileSize = NetDevice.GetData();
-			Bar.SetFileSize(FileSize);
-		}
-		else if (OpCode == OperationCode::ReceiveFileData)
-		{
-			int ReceivedBytesNow = NetDevice.GetBytesReceived();
-			{
-				LockGuard<Mutex> Lock(BufferMutex);
-
-				Buffer* NewBuffer = new Buffer(ReceivedBytesNow);
-				memcpy(NewBuffer->Data, NetDevice.GetData(), NewBuffer->Size);
-				CommonBuffer.push_back(NewBuffer);
-			}
-		}
-		else if (OpCode == OperationCode::FinishedTransfer)
-		{
-			bTranferFinished = true;
-			Bar.Print();
-		}
-		else
-		{
-			CurrentState = OperationCode::Invalid;
-		}
-	};
+	ReceiveFileListenTask ListenTask(NetDevice, BufferMutex, SharedBuffer, File, Bar, Path, CurrentState, bTransferFinished);
 	auto WhileJobNotFinished = [&CurrentState](OperationCode OpCode)
 	{
 		return not (OpCode == OperationCode::FinishedTransfer || OpCode == OperationCode::Invalid || CurrentState == OperationCode::Invalid);
 	};
-	bool bResult = NetDevice.Listen(WriteToFile, WhileJobNotFinished);
+	bool bResult = NetDevice.Listen(ListenTask, WhileJobNotFinished);
+
+	// Wait untill thread is finished it's job
 	WriteFileThread.join();
 
 	return !bResult;
@@ -224,4 +137,120 @@ void SendFileDataTask::operator()()
 			BufferToWrite = nullptr;
 		}
 	} while (not bFinished || not SharedBuffer.empty());
+}
+
+WriteToFileTask::WriteToFileTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, FileHandle& InFile, ProgressBar& InPB, bool& InbFinished) :
+	Device(InDevice), BufferMutex(InBufferMutex), SharedBuffer(InSharedBuffer), bFinished(InbFinished), File(InFile), PB(InPB)
+{}
+
+void WriteToFileTask::operator()()
+{
+	Buffer* BufferToWrite = nullptr;
+	do
+	{
+		{
+			LockGuard<Mutex> LockGuard(BufferMutex);
+
+			if (not SharedBuffer.empty())
+			{
+				BufferToWrite = SharedBuffer.front();
+				SharedBuffer.pop_front();
+			}
+		}
+
+		if (BufferToWrite != nullptr)
+		{
+			DWORD BytesWritten;
+			bool bSuccess = WriteFile(File, BufferToWrite->Data, BufferToWrite->Size, &BytesWritten, NULL);
+			if (!bSuccess)
+			{
+				CMD::PrintError() << "Failed to write to the file: " << GetLastError() << "\n";
+			}
+
+			// Update progress bar
+			PB += BytesWritten;
+			if (EACH_N_SECONDS(1))
+			{
+				PB.Print();
+			}
+			delete BufferToWrite;
+			BufferToWrite = nullptr;
+		}
+	} while (not bFinished || not SharedBuffer.empty());
+}
+
+ReceiveFileListenTask::ReceiveFileListenTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, FileHandle& InFile, ProgressBar& InPB, String& InPath, OperationCode& InOpCode, bool& InbFinished) :
+	Device(InDevice), BufferMutex(InBufferMutex), SharedBuffer(InSharedBuffer), bFinished(InbFinished), File(InFile), PB(InPB), Path(InPath), CurrentState(InOpCode)
+{}
+
+void ReceiveFileListenTask::operator()(OperationCode OpCode)
+{
+	CurrentState = OpCode;
+
+	if (OpCode == OperationCode::ReceiveFileName)
+	{
+		ReceiveFileName();
+	}
+	else if (OpCode == OperationCode::ReceiveFileSize)
+	{
+		LargeInteger FileSize = Device.GetData();
+		PB.SetFileSize(FileSize);
+	}
+	else if (OpCode == OperationCode::ReceiveFileData)
+	{
+		ReceiveFileData();
+	}
+	else if (OpCode == OperationCode::FinishedTransfer)
+	{
+		bFinished = true;
+		PB.Print();
+	}
+	else
+	{
+		CurrentState = OperationCode::Invalid;
+	}
+}
+
+void ReceiveFileListenTask::ReceiveFileName()
+{
+	if (Path.empty())
+	{
+		Path = ".\\";
+	}
+	else
+	{
+		Path.push_back('\\');
+	}
+
+	String FileName(Device.GetData(), Device.GetBytesReceived());
+	Path.append(FileName);
+
+	CMD::Print() << "Receiving file: " << FileName << "\n";
+
+	// Create file with the provided name
+	LPWSTR WFileName = CharToWChar(Path.data());
+	File = CreateFile(WFileName, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	delete[] WFileName;
+
+	if (File == INVALID_HANDLE_VALUE)
+	{
+		CMD::PrintError() << "Failed to create file: " << FileName.data() << " with error: " << GetLastError() << "\n";
+		// Make sure we stopped receiving data if we failed to create the file
+		CurrentState = OperationCode::Invalid;
+		return;
+	}
+	MemoryBarrier();
+	Sleep(1);
+}
+
+void ReceiveFileListenTask::ReceiveFileData()
+{
+	int ReceivedBytesNow = Device.GetBytesReceived();
+	{
+		LockGuard<Mutex> Lock(BufferMutex);
+
+		Buffer* NewBuffer = new Buffer(ReceivedBytesNow);
+		memcpy(NewBuffer->Data, Device.GetData(), NewBuffer->Size);
+		SharedBuffer.push_back(NewBuffer);
+	}
 }
