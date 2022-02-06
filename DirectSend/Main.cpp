@@ -55,7 +55,7 @@ int main(int argc, char* argv[])
 	// At least 6 arguments need to be provided for the program to work, show help if not enough arguments
 	if (argc < 6)
 	{
-		CMD::PrintError() << Usage;
+		CMD::Print() << Usage;
 		return Errors.At("NotEnoughArguments");
 	}
 
