@@ -65,7 +65,7 @@ void ProgressBar::Print()
 		CMD::Print() << GetLastError() << std::endl;
 	}
 
-	double Percent = (CurrentProgress / TotalSize) * 100.;
+	double Percent = ((double)CurrentProgress / (double)TotalSize) * 100.;
 	COORD PercentToWrite = PositionToWrite;
 	PercentToWrite.X += BarInfo.ProgressEnd + 4;
 	wchar_t Str[40];
@@ -84,7 +84,7 @@ void ProgressBar::operator+=(LONGLONG AddProgress)
 
 void ProgressBar::UpdateText()
 {
-	size_t Filled = CurrentProgress / TotalSize * BarInfo.BarSize;
+	size_t Filled = (double)CurrentProgress / (double)TotalSize * BarInfo.BarSize;
 
 	for (size_t i = 0; i < Filled; ++i)
 	{

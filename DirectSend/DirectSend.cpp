@@ -2,8 +2,6 @@
 #include "NetworkDevice.h"
 #include "ProgressBar.h"
 
-//#include <fileapi.h>
-
 int SendFile(NetworkDevice& NetDevice, String& FileName)
 {
 	CMD::Print() << "Getting ready to send " << FileName << "\n";
@@ -21,14 +19,45 @@ int SendFile(NetworkDevice& NetDevice, String& FileName)
 	CutToFileName(FileName);
 	NetDevice.Send(OperationCode::ReceiveFileName, FileName);
 
+	bool bTaskFailed = false;
+	LargeInteger ReceivedFileSeek;
+	auto Task = [&bTaskFailed, &ReceivedFileSeek, &NetDevice](OperationCode OpCode)
+	{
+		if (OpCode == OperationCode::ReceiveFileSeek)
+		{
+			// we received start position
+			ReceivedFileSeek = LargeInteger(NetDevice.GetData());
+		}
+		else
+		{
+			bTaskFailed = true;
+		}
+	};
+	auto ReceiveCond = [&bTaskFailed](OperationCode OpCode)
+	{
+		return !(bTaskFailed || OpCode == OperationCode::ReceiveFileSeek);
+	};
+	NetDevice.TryListen(Task, ReceiveCond);
+
 	// Init progress bar
 	LargeInteger FileSize;
 	GetFileSizeEx(FileToTransfer, FileSize);
 	ProgressBar Bar(L"Upload: ", 20);
 	Bar.SetFileSize(FileSize);
+	Bar.SetCurrentSize(ReceivedFileSeek);
+
+	SetFilePointerEx(FileToTransfer, ReceivedFileSeek, nullptr, FILE_BEGIN);
 
 	// Send file size to the receiver
 	NetDevice.Send(OperationCode::ReceiveFileSize, FileSize, sizeof(FileSize));
+
+	if (ReceivedFileSeek == FileSize)
+	{
+		CMD::Print() << "File is already received by the client!\n";
+		NetDevice.TrySend(OperationCode::FinishedTransfer, "File is already received!");
+		Sleep(3000);
+		return 0;
+	}
 
 	Mutex BufferMutex;
 	List<Buffer*> SharedBuffer;
@@ -73,7 +102,7 @@ int SendFile(NetworkDevice& NetDevice, String& FileName)
 	bTransferFinished = true;
 	Bar.Print();
 	FileThread.join();
-	NetDevice.Send(OperationCode::FinishedTransfer, "Gratz!");
+	NetDevice.Send(OperationCode::FinishedTransfer, "File is successfully received!");
 	Sleep(4000);
 
 	// Record end time
@@ -102,9 +131,18 @@ int ReceiveFile(NetworkDevice& NetDevice, String& Path)
 		return not (OpCode == OperationCode::FinishedTransfer || OpCode == OperationCode::Invalid || CurrentState == OperationCode::Invalid);
 	};
 	bool bResult = NetDevice.Listen(ListenTask, WhileJobNotFinished);
-
-	// Wait untill thread is finished it's job
-	WriteFileThread.join();
+	String Message = bResult ? "Transfer successfully finished!" : "Transfer failed, connection lost!!!";
+	CMD::Print() << Message << "\n";
+	
+	if (!bResult)
+	{
+		WriteFileThread.detach();
+	}
+	else
+	{
+		// Wait until thread is finished it's job
+		WriteFileThread.join();
+	}
 
 	return !bResult;
 }
@@ -204,6 +242,8 @@ void ReceiveFileListenTask::operator()(OperationCode OpCode)
 	{
 		bFinished = true;
 		PB.Print();
+		String Message(Device.GetData(), Device.GetBytesReceived());
+		CMD::Print() << Message << "\n";
 	}
 	else
 	{
@@ -229,7 +269,25 @@ void ReceiveFileListenTask::ReceiveFileName()
 
 	// Create file with the provided name
 	LPWSTR WFileName = CharToWChar(Path.data());
-	File = CreateFile(WFileName, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+	// Try to open if any first
+	File = CreateFile(WFileName, GENERIC_READ | GENERIC_WRITE, NULL, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	LargeInteger FileSize = LargeInteger(int64_t(0));
+	if (File != INVALID_HANDLE_VALUE)
+	{
+		CMD::Print() << "Found file with the same name, trying to continue downloading..." << FileName << "\n";
+
+		GetFileSizeEx(File, FileSize);
+		PB.SetCurrentSize(FileSize);
+		SetFilePointerEx(File, FileSize, nullptr, FILE_BEGIN);
+	}
+	else
+	{
+		// Create new file if we haven't found existing one
+		File = CreateFile(WFileName, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	}
+	Device.TrySend(OperationCode::ReceiveFileSeek, (char*)FileSize, sizeof(LargeInteger));
+	
 	delete[] WFileName;
 
 	if (File == INVALID_HANDLE_VALUE)

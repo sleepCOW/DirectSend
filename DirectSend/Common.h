@@ -11,11 +11,14 @@
 enum class OperationCode : uint8_t
 {
 	Invalid = 0,
+	ReceiveFileSeek, // Restore mode
 	ReceiveFileName,
 	ReceiveFileSize,
 	ReceiveFileData,
 	FinishedTransfer
 };
+
+const char* ToStr(OperationCode OpCode);
 
 /** Header for all send/received packages */
 struct NetHeader
@@ -91,7 +94,7 @@ struct LargeInteger
 {
 	LargeInteger(int64_t Value = 0)
 	{
-		m_Number.QuadPart = 0;
+		m_Number.QuadPart = Value;
 	}
 
 	LargeInteger(const char* Data)
@@ -109,6 +112,8 @@ struct LargeInteger
 	LargeInteger operator +(LONGLONG Value) { return m_Number.QuadPart -= Value; }
 	LargeInteger operator -(LONGLONG Value) { return m_Number.QuadPart -= Value; }
 
+	bool operator ==(const LargeInteger& other) const { return m_Number.QuadPart == other.m_Number.QuadPart; }
+
 	operator LARGE_INTEGER() const { return m_Number; }
 	operator PLARGE_INTEGER() const { return PLARGE_INTEGER(this); }
 	operator char*() const { return (char*)(this); }
@@ -117,7 +122,7 @@ struct LargeInteger
 	LARGE_INTEGER m_Number;
 };
 
-std::chrono::milliseconds GetTimePast(std::chrono::steady_clock::time_point& start);
+std::chrono::seconds GetTimePast(std::chrono::steady_clock::time_point& start);
 
 #define CONCATENATE_DETAIL(x, y) x##y
 #define CONCATENATE(x, y) CONCATENATE_DETAIL(x, y)

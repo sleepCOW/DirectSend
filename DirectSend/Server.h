@@ -49,6 +49,7 @@ Server::Server(String Port)
 	}
 
 	// Accept a client socket
+	CMD::Print() << "Waiting for client!\n";
 	ClientSocket.GetSocket() = accept(ListenSocket, NULL, NULL);
 	if (ClientSocket == INVALID_SOCKET) {
 		CMD::PrintError() << "accept failed: " << WSAGetLastError << std::endl;
