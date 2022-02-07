@@ -27,6 +27,24 @@ struct ConstexprMap
 	}
 };
 
+class NetworkException : public std::exception
+{
+public:
+	virtual const char* what() const
+	{
+		return "Network exception!";
+	}
+};
+
+class LostConnection : public NetworkException
+{
+public:
+	virtual const char* what() const
+	{
+		return "Connection lost!";
+	}
+};
+
 namespace CMD
 {
 	OStream& Print();

@@ -1,6 +1,27 @@
 #include "Common.h"
 
-std::chrono::milliseconds GetTimePast(std::chrono::steady_clock::time_point& start)
+const char* ToStr(OperationCode OpCode)
+{
+	switch (OpCode)
+	{
+	case OperationCode::Invalid:
+		return "Invalid";
+	case OperationCode::ReceiveFileSeek:
+		return "ReceiveFileSeek";
+	case OperationCode::ReceiveFileName:
+		return "ReceiveFileName";
+	case OperationCode::ReceiveFileSize:
+		return "ReceiveFileSize";
+	case OperationCode::ReceiveFileData:
+		return "ReceiveFileData";
+	case OperationCode::FinishedTransfer:
+		return "FinishedTransfer";
+	default:
+		return "OperationCode doesn't match with any values in enum!";
+	}
+}
+
+std::chrono::seconds GetTimePast(std::chrono::steady_clock::time_point& start)
 {
 	auto stop = std::chrono::high_resolution_clock::now();
 	return std::chrono::duration_cast<std::chrono::seconds>(stop - start);
@@ -12,6 +33,7 @@ LPWSTR CharToWChar(const char* Str)
 	// required size
 	int nChars = MultiByteToWideChar(CP_ACP, 0, Str, -1, NULL, 0);
 	// allocate it
+	// #TODO remove memory leak
 	WideStr = new WCHAR[nChars];
 	MultiByteToWideChar(CP_ACP, 0, Str, -1, (LPWSTR)WideStr, nChars);
 	return WideStr;

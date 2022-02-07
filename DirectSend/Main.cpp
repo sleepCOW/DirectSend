@@ -32,7 +32,7 @@ const char* Usage =
 
 void FillArguments(CMDArgs& Args, int Argc, char* Argv[])
 {
-	auto ReadArgument = [Argv](const char* ArgumentName, int& Index, String& OutArgument)
+	auto ReadStringArg = [Argv](const char* ArgumentName, int& Index, String& OutArgument)
 	{
 		if (strcmp(Argv[Index], ArgumentName) == 0)
 		{
@@ -43,10 +43,10 @@ void FillArguments(CMDArgs& Args, int Argc, char* Argv[])
 
 	for (int i = 1; i < Argc; ++i)
 	{
-		ReadArgument("-ip", i, Args.Ip);
-		ReadArgument("-port", i, Args.Port);
-		ReadArgument("-path", i, Args.Path);
-		ReadArgument("-file", i, Args.FileName);
+		ReadStringArg("-ip", i, Args.Ip);
+		ReadStringArg("-port", i, Args.Port);
+		ReadStringArg("-path", i, Args.Path);
+		ReadStringArg("-file", i, Args.FileName);
 	}
 }
 
@@ -55,7 +55,7 @@ int main(int argc, char* argv[])
 	// At least 6 arguments need to be provided for the program to work, show help if not enough arguments
 	if (argc < 6)
 	{
-		CMD::PrintError() << Usage;
+		CMD::Print() << Usage;
 		return Errors.At("NotEnoughArguments");
 	}
 
@@ -84,7 +84,17 @@ int main(int argc, char* argv[])
 	// send or receive file depending on mode
 	if (Args.Mode == "send")
 	{
-		return SendFile(*NetDevice, Args.FileName);
+		bool bError = false;
+		try
+		{
+			bError = SendFile(*NetDevice, Args.FileName);
+		}
+		catch (NetworkException Err)
+		{
+			bError = true;
+			CMD::Print() << "Error occurred!\n" << Err.what() << "\n";
+		}
+		return bError;
 	}
 	else
 	{
