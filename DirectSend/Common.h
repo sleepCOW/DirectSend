@@ -56,7 +56,8 @@ public:
 
 	~Socket()
 	{
-		closesocket(m_Socket);
+		if (m_Socket != INVALID_SOCKET)
+			closesocket(m_Socket);
 	}
 
 	operator SOCKET() const { return m_Socket; }
@@ -71,12 +72,12 @@ protected:
  */
 struct FileHandle
 {
-	FileHandle(HANDLE Handle) : m_Handle(Handle) {}
+	FileHandle(HANDLE Handle = INVALID_HANDLE_VALUE) : m_Handle(Handle) {}
 	~FileHandle() { CloseHandle(m_Handle); }
 
 	void operator=(HANDLE Handle)
 	{
-		if (m_Handle != nullptr)
+		if (m_Handle != INVALID_HANDLE_VALUE)
 			CloseHandle(m_Handle);
 
 		m_Handle = Handle;
@@ -149,4 +150,4 @@ bool EachNSeconds(float Seconds)
 
 LPWSTR CharToWChar(const char* Str);
 String GetFileName(char* FullName);
-void CutToFileName(String& FullName);
+String CutToFileName(const String& FullName);

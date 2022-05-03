@@ -17,7 +17,7 @@ Server::Server(String Port)
 	ErrorCode = WSAStartup(MAKEWORD(2, 2), &Wsadata);
 	if (ErrorCode != 0)
 	{
-		CMD::PrintError() << "WSAStartup failed: " << ErrorCode << std::endl;
+		CMD::PrintDebug() << "WSAStartup failed: " << ErrorCode << std::endl;
 		return;
 	}
 	
@@ -33,18 +33,18 @@ Server::Server(String Port)
 	ListenSocket = socket(SocketDesc.sin_family, SOCK_STREAM, IPPROTO_TCP);
 
 	if (ListenSocket == INVALID_SOCKET) {
-		CMD::PrintError() << "Error at socket(): " << WSAGetLastError << std::endl;
+		CMD::PrintDebug() << "Error at socket(): " << WSAGetLastError() << std::endl;
 		return;
 	}
 	
 	ErrorCode = bind(ListenSocket, (SOCKADDR*)&SocketDesc, sizeof(sockaddr_in));
 	if (ErrorCode == SOCKET_ERROR) {
-		CMD::PrintError() << "bind failed with error: " << WSAGetLastError << std::endl;
+		CMD::PrintDebug() << "bind failed with error: " << WSAGetLastError() << std::endl;
 		return;
 	}
 
 	if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR) {
-		CMD::PrintError() << "Listen failed with error: " << WSAGetLastError << std::endl;
+		CMD::PrintDebug() << "Listen failed with error: " << WSAGetLastError() << std::endl;
 		return;
 	}
 
@@ -52,7 +52,7 @@ Server::Server(String Port)
 	CMD::Print() << "Waiting for client!\n";
 	ClientSocket.GetSocket() = accept(ListenSocket, NULL, NULL);
 	if (ClientSocket == INVALID_SOCKET) {
-		CMD::PrintError() << "accept failed: " << WSAGetLastError << std::endl;
+		CMD::PrintDebug() << "accept failed: " << WSAGetLastError() << std::endl;
 		return;
 	}
 	CMD::Print() << "Client is connected!\n";

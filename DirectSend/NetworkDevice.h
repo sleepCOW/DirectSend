@@ -94,12 +94,12 @@ bool NetworkDevice::Listen(Func& Function, Cond& Condition)
 			}
 			else if (BytesReceived == 0)
 			{
-				CMD::PrintError() << "Connection closing..." << std::endl;
+				CMD::PrintDebug() << "Connection closing..." << std::endl;
 				return false;
 			}
 			else
 			{
-				CMD::PrintError() << "recv failed with error: " << WSAGetLastError() << std::endl;
+				CMD::PrintDebug() << "recv failed with error: " << WSAGetLastError() << std::endl;
 				return false;
 			}
 		}
@@ -110,7 +110,7 @@ bool NetworkDevice::Listen(Func& Function, Cond& Condition)
 		}
 
 #ifdef _DEBUG
-		CMD::PrintError() << "[DEBUG]" << " Received header with opcode = " << ToStr(Header.OpCode) << "\n";
+		CMD::PrintDebug() << "[DEBUG]" << " Received header with opcode = " << ToStr(Header.OpCode) << "\n";
 #endif
 
 		// Receive actual data
@@ -124,12 +124,12 @@ bool NetworkDevice::Listen(Func& Function, Cond& Condition)
 			}
 			else if (BytesReceived == 0)
 			{
-				CMD::PrintError() << "Connection closing..." << std::endl;
+				CMD::PrintDebug() << "Connection closing..." << std::endl;
 				return false;
 			}
 			else
 			{
-				CMD::PrintError() << "recv failed with error: " << WSAGetLastError() << std::endl;
+				CMD::PrintDebug() << "recv failed with error: " << WSAGetLastError() << std::endl;
 				return false;
 			}
 

@@ -5,7 +5,10 @@ OStream& CMD::Print()
 	return std::cout;
 }
 
-OStream& CMD::PrintError()
+// #TODO: Print error for both Debug/Release with buffer flush!
+
+// Works for non-release builds
+OStream& CMD::PrintDebug()
 {
 	return std::cerr;
 }

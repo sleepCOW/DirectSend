@@ -2,26 +2,26 @@
 #include "NetworkDevice.h"
 #include "ProgressBar.h"
 
-int SendFile(NetworkDevice& NetDevice, String& FileName)
+int SendFile(NetworkDevice& NetDevice, String& FilePath)
 {
-	CMD::Print() << "Getting ready to send " << FileName << "\n";
+	CMD::Print() << "Getting ready to send " << FilePath << "\n";
 
 	// Open a file, also lock file until transfer is done (accept only reading for other processes)
-	FileHandle FileToTransfer = CreateFile(CharToWChar(FileName.data()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	FileHandle FileToTransfer = CreateFile(CharToWChar(FilePath.data()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
 	if (FileToTransfer == INVALID_HANDLE_VALUE)
 	{
-		CMD::PrintError() << "Failed to open file: " << GetLastError() << std::endl;
+		CMD::PrintDebug() << "Failed to open file: " << GetLastError() << std::endl;
 		return GetLastError();
 	}
 
 	// Send file name to the receiver
-	CutToFileName(FileName);
+	String FileName = CutToFileName(FilePath);
 	NetDevice.Send(OperationCode::ReceiveFileName, FileName);
 
 	bool bTaskFailed = false;
 	LargeInteger ReceivedFileSeek;
-	auto Task = [&bTaskFailed, &ReceivedFileSeek, &NetDevice](OperationCode OpCode)
+	auto ReceiveFileSeekTask = [&bTaskFailed, &ReceivedFileSeek, &NetDevice](OperationCode OpCode)
 	{
 		if (OpCode == OperationCode::ReceiveFileSeek)
 		{
@@ -37,7 +37,7 @@ int SendFile(NetworkDevice& NetDevice, String& FileName)
 	{
 		return !(bTaskFailed || OpCode == OperationCode::ReceiveFileSeek);
 	};
-	NetDevice.TryListen(Task, ReceiveCond);
+	NetDevice.TryListen(ReceiveFileSeekTask, ReceiveCond);
 
 	// Init progress bar
 	LargeInteger FileSize;
@@ -49,7 +49,7 @@ int SendFile(NetworkDevice& NetDevice, String& FileName)
 	SetFilePointerEx(FileToTransfer, ReceivedFileSeek, nullptr, FILE_BEGIN);
 
 	// Send file size to the receiver
-	NetDevice.Send(OperationCode::ReceiveFileSize, FileSize, sizeof(FileSize));
+	NetDevice.TrySend(OperationCode::ReceiveFileSize, FileSize, sizeof(FileSize));
 
 	if (ReceivedFileSeek == FileSize)
 	{
@@ -62,8 +62,9 @@ int SendFile(NetworkDevice& NetDevice, String& FileName)
 	Mutex BufferMutex;
 	List<Buffer*> SharedBuffer;
 	bool bTransferFinished = false;
+	bool bLostConnection = false;
 	// Create thread task to send file
-	SendFileDataTask SendTask(NetDevice, BufferMutex, SharedBuffer, bTransferFinished);
+	SendFileDataTask SendTask(NetDevice, BufferMutex, SharedBuffer, bTransferFinished, bLostConnection);
 	Thread FileThread(SendTask);
 
 	// Read bytes and send until file end
@@ -95,13 +96,20 @@ int SendFile(NetworkDevice& NetDevice, String& FileName)
 		}
 		else if (ReadResult == false)
 		{
-			CMD::PrintError() << "Read failed: " << GetLastError() << "\n";
+			CMD::PrintDebug() << "Read failed: " << GetLastError() << "\n";
 			return GetLastError();
 		}
-	} while (ReadResult and BytesRead == NetDevice.GetBufferSize());
+	} while (not bLostConnection and ReadResult and BytesRead == NetDevice.GetBufferSize());
 	bTransferFinished = true;
 	Bar.Print();
 	FileThread.join();
+	
+	// Lost connection could occur during sendfile task
+	if (bLostConnection)
+	{
+		throw LostConnection();
+	}
+
 	NetDevice.Send(OperationCode::FinishedTransfer, "File is successfully received!");
 	Sleep(4000);
 
@@ -113,7 +121,7 @@ int SendFile(NetworkDevice& NetDevice, String& FileName)
 
 int ReceiveFile(NetworkDevice& NetDevice, String& Path)
 {
-	FileHandle File(nullptr);
+	FileHandle File;
 	ProgressBar Bar(L"Download: ", 20);
 	OperationCode CurrentState = OperationCode::Invalid;
 	Mutex BufferMutex;
@@ -122,33 +130,30 @@ int ReceiveFile(NetworkDevice& NetDevice, String& Path)
 
 	CMD::Print() << "Getting ready to receive file" << "\n";
 
-	WriteToFileTask WriteTask(NetDevice, BufferMutex, SharedBuffer, File, Bar, bTransferFinished);
+	bool bLostConnection = false;
+	WriteToFileTask WriteTask(NetDevice, BufferMutex, SharedBuffer, File, Bar, bTransferFinished, bLostConnection);
 	Thread WriteFileThread(WriteTask);
 
-	ReceiveFileListenTask ListenTask(NetDevice, BufferMutex, SharedBuffer, File, Bar, Path, CurrentState, bTransferFinished);
+	ReceiveFileListenTask ListenTask(NetDevice, BufferMutex, SharedBuffer, File, Bar, Path, CurrentState, bTransferFinished, bLostConnection);
 	auto WhileJobNotFinished = [&CurrentState](OperationCode OpCode)
 	{
 		return not (OpCode == OperationCode::FinishedTransfer || OpCode == OperationCode::Invalid || CurrentState == OperationCode::Invalid);
 	};
-	bool bResult = NetDevice.Listen(ListenTask, WhileJobNotFinished);
-	String Message = bResult ? "Transfer successfully finished!" : "Transfer failed, connection lost!!!";
+	bLostConnection = not NetDevice.Listen(ListenTask, WhileJobNotFinished);
+	String Message = bLostConnection ? "Transfer failed, connection lost!!!" : "Transfer successfully finished!";
 	CMD::Print() << Message << "\n";
 	
-	if (!bResult)
-	{
-		WriteFileThread.detach();
-	}
-	else
-	{
-		// Wait until thread is finished it's job
-		WriteFileThread.join();
-	}
+	// Wait until thread is finished it's job
+	WriteFileThread.join();
 
-	return !bResult;
+	if (bLostConnection)
+		throw LostConnection();
+
+	return !bLostConnection;
 }
 
-SendFileDataTask::SendFileDataTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, bool& InbFinished) :
-	Device(InDevice), BufferMutex(InBufferMutex), SharedBuffer(InSharedBuffer), bFinished(InbFinished)
+SendFileDataTask::SendFileDataTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, bool& InbFinished, bool& InbLostConnection) :
+	Device(InDevice), BufferMutex(InBufferMutex), SharedBuffer(InSharedBuffer), bFinished(InbFinished), bLostConnection(InbLostConnection)
 {}
 
 void SendFileDataTask::operator()()
@@ -170,15 +175,18 @@ void SendFileDataTask::operator()()
 		// Send any new buffers to the receiver
 		if (BufferToWrite != nullptr)
 		{
-			Device.Send(OperationCode::ReceiveFileData, BufferToWrite->Data, BufferToWrite->Size);
+			bLostConnection = not Device.Send(OperationCode::ReceiveFileData, BufferToWrite->Data, BufferToWrite->Size);
 			delete BufferToWrite;
 			BufferToWrite = nullptr;
+
+			if (bLostConnection)
+				break;
 		}
 	} while (not bFinished || not SharedBuffer.empty());
 }
 
-WriteToFileTask::WriteToFileTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, FileHandle& InFile, ProgressBar& InPB, bool& InbFinished) :
-	Device(InDevice), BufferMutex(InBufferMutex), SharedBuffer(InSharedBuffer), bFinished(InbFinished), File(InFile), PB(InPB)
+WriteToFileTask::WriteToFileTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, FileHandle& InFile, ProgressBar& InPB, bool& InbFinished, bool& InbLostConnection) :
+	Device(InDevice), BufferMutex(InBufferMutex), SharedBuffer(InSharedBuffer), bFinished(InbFinished), File(InFile), PB(InPB), bLostConnection(InbLostConnection)
 {}
 
 void WriteToFileTask::operator()()
@@ -202,7 +210,7 @@ void WriteToFileTask::operator()()
 			bool bSuccess = WriteFile(File, BufferToWrite->Data, BufferToWrite->Size, &BytesWritten, NULL);
 			if (!bSuccess)
 			{
-				CMD::PrintError() << "Failed to write to the file: " << GetLastError() << "\n";
+				CMD::PrintDebug() << "Failed to write to the file: " << GetLastError() << "\n";
 			}
 
 			// Update progress bar
@@ -214,11 +222,14 @@ void WriteToFileTask::operator()()
 			delete BufferToWrite;
 			BufferToWrite = nullptr;
 		}
+		// In case of connection lose
+		if (bLostConnection)
+			break;
 	} while (not bFinished || not SharedBuffer.empty());
 }
 
-ReceiveFileListenTask::ReceiveFileListenTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, FileHandle& InFile, ProgressBar& InPB, String& InPath, OperationCode& InOpCode, bool& InbFinished) :
-	Device(InDevice), BufferMutex(InBufferMutex), SharedBuffer(InSharedBuffer), bFinished(InbFinished), File(InFile), PB(InPB), Path(InPath), CurrentState(InOpCode)
+ReceiveFileListenTask::ReceiveFileListenTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, FileHandle& InFile, ProgressBar& InPB, String InPath, OperationCode& InOpCode, bool& InbFinished, bool& InbLostConnection) :
+	Device(InDevice), BufferMutex(InBufferMutex), SharedBuffer(InSharedBuffer), bFinished(InbFinished), File(InFile), PB(InPB), Path(InPath), CurrentState(InOpCode), bLostConnection(InbLostConnection)
 {}
 
 void ReceiveFileListenTask::operator()(OperationCode OpCode)
@@ -285,6 +296,8 @@ void ReceiveFileListenTask::ReceiveFileName()
 	{
 		// Create new file if we haven't found existing one
 		File = CreateFile(WFileName, GENERIC_WRITE, NULL, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+		// #TODO fail if failed to create file
 	}
 	Device.TrySend(OperationCode::ReceiveFileSeek, (char*)FileSize, sizeof(LargeInteger));
 	
@@ -292,7 +305,7 @@ void ReceiveFileListenTask::ReceiveFileName()
 
 	if (File == INVALID_HANDLE_VALUE)
 	{
-		CMD::PrintError() << "Failed to create file: " << FileName.data() << " with error: " << GetLastError() << "\n";
+		CMD::PrintDebug() << "Failed to create file: " << FileName.data() << " with error: " << GetLastError() << "\n";
 		// Make sure we stopped receiving data if we failed to create the file
 		CurrentState = OperationCode::Invalid;
 		return;

@@ -1,13 +1,13 @@
 #include "ProgressBar.h"
 #include <iostream>
 
-ProgressBar::ProgressBar(std::wstring InitialText, size_t BarSize) : Text(InitialText), ConsoleHandle(nullptr)
+ProgressBar::ProgressBar(std::wstring InitialText, size_t BarSize) : Text(InitialText), ConsoleHandle(INVALID_HANDLE_VALUE)
 {
 	ConsoleHandle = GetStdHandle(STD_OUTPUT_HANDLE);
 
 	if (!ConsoleHandle)
 	{
-		CMD::PrintError() << "ProgressBar can't GetStdHandle error = " << GetLastError() << std::endl;
+		CMD::PrintDebug() << "ProgressBar can't GetStdHandle error = " << GetLastError() << std::endl;
 		return;
 	}
 
@@ -28,6 +28,10 @@ ProgressBar::ProgressBar(std::wstring InitialText, size_t BarSize) : Text(Initia
 	}
 	BarInfo.ProgressEnd = Text.size() - 1;
 	Text.push_back(']');
+}
+
+ProgressBar::~ProgressBar()
+{
 }
 
 void ProgressBar::SetPosition(COORD InPosition)

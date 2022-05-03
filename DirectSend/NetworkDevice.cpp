@@ -10,7 +10,7 @@ bool NetworkDevice::Send_Internal(OperationCode OpCode, const char* Data, uint16
 	ErrorCode = send(ClientSocket.GetSocket(), (char*)(&SendHeader), HeaderSize, 0);
 
 #ifdef _DEBUG
-	CMD::PrintError() << "[DEBUG] Sending opcode = " << ToStr(OpCode) << "\n";
+	CMD::PrintDebug() << "[DEBUG] Sending opcode = " << ToStr(OpCode) << "\n";
 #endif
 
 	if (not CheckError("Send failed", SOCKET_ERROR))
@@ -122,7 +122,7 @@ bool NetworkDevice::CheckError(const char* ErrorMsg, int Error) const
 {
 	if (ErrorCode == Error)
 	{
-		CMD::PrintError() << ErrorMsg << ": " << WSAGetLastError() << std::endl;
+		CMD::PrintDebug() << ErrorMsg << ": " << WSAGetLastError() << std::endl;
 		return false;
 	}
 	return true;
