@@ -28,6 +28,7 @@ const char* Usage =
 "If you are a server you only need to specify \'-port\' on which connection should be established\n"
 "With \'send\' mode you have to specify \'-file\' to send\n"
 "With \'receive\' mode you can specify \'-path\' where to store received file, if you leave this empty it will save in current directory\n"
+"Use \'-infinite\' or \'-retries\' with number to either specify infinite number of retries of exact number\n"
 "Examples:\n"
 "client receive -ip 192.168.1.1 -port 5666 -path \"S:\\Folder\"\n"
 "server send -port 5666 -file \"S:\\Folder\\Archive.zip\"\n";
