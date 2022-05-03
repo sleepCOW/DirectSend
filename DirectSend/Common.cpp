@@ -55,7 +55,7 @@ String GetFileName(char* FullName)
 	return result;
 }
 
-void CutToFileName(String& FullName)
+String CutToFileName(const String& FullName)
 {
 	size_t NameStart = FullName.size() - 1;
 	for (NameStart; NameStart > 0; --NameStart)
@@ -66,5 +66,5 @@ void CutToFileName(String& FullName)
 			break;
 		}
 	}
-	FullName = FullName.substr(NameStart);
+	return FullName.substr(NameStart);
 }

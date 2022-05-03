@@ -48,5 +48,5 @@ public:
 namespace CMD
 {
 	OStream& Print();
-	OStream& PrintError();
+	OStream& PrintDebug();
 }

@@ -10,6 +10,8 @@ struct CMDArgs
 	String Path;
 	String Ip;
 	String Port;
+	size_t MaxRetries = 100u;
+	bool   bInfiniteReconnects = false;
 };
 
 ConstexprMap<StringView, int, 3> Errors = { {{
@@ -26,6 +28,7 @@ const char* Usage =
 "If you are a server you only need to specify \'-port\' on which connection should be established\n"
 "With \'send\' mode you have to specify \'-file\' to send\n"
 "With \'receive\' mode you can specify \'-path\' where to store received file, if you leave this empty it will save in current directory\n"
+"Use \'-infinite\' or \'-retries\' with number to either specify infinite number of retries of exact number\n"
 "Examples:\n"
 "client receive -ip 192.168.1.1 -port 5666 -path \"S:\\Folder\"\n"
 "server send -port 5666 -file \"S:\\Folder\\Archive.zip\"\n";
@@ -40,6 +43,21 @@ void FillArguments(CMDArgs& Args, int Argc, char* Argv[])
 			OutArgument = Argv[Index];
 		}
 	};
+	auto ReadNumArg = [Argv](const char* ArgumentName, int& Index, size_t& OutArgument)
+	{
+		if (strcmp(Argv[Index], ArgumentName) == 0)
+		{
+			++Index;
+			OutArgument = atoi(Argv[Index]);
+		}
+	};
+	auto ReadArg = [Argv](const char* ArgumentName, int& Index, bool& OutArgument)
+	{
+		if (strcmp(Argv[Index], ArgumentName) == 0)
+		{
+			OutArgument = true;
+		}
+	};
 
 	for (int i = 1; i < Argc; ++i)
 	{
@@ -47,6 +65,42 @@ void FillArguments(CMDArgs& Args, int Argc, char* Argv[])
 		ReadStringArg("-port", i, Args.Port);
 		ReadStringArg("-path", i, Args.Path);
 		ReadStringArg("-file", i, Args.FileName);
+		ReadNumArg("-retries", i, Args.MaxRetries);
+		ReadArg("-infinite", i, Args.bInfiniteReconnects);
+	}
+}
+
+int StartApplication(CMDArgs& Args)
+{
+	NetworkDevice* NetDevice = nullptr;
+	// Create proper NetworkDevice
+	if (Args.Role == "client")
+	{
+		NetDevice = new Client(Args.Ip, Args.Port);
+	}
+	else if (Args.Role == "server")
+	{
+		NetDevice = new Server(Args.Port);
+	}
+	else
+	{
+		CMD::PrintDebug() << "Wrong role!!!!!!\n\n" << Usage;
+		return Errors.At("WrongRole");
+	}
+
+	// send or receive file depending on mode
+	try
+	{
+		if (Args.Mode == "send")
+			return SendFile(*NetDevice, Args.FileName);
+		else if (Args.Mode == "receive")
+			return ReceiveFile(*NetDevice, Args.FileName);
+	}
+	catch (NetworkException& Err)
+	{
+		CMD::Print() << "Error occurred!\n" << Err.what() << std::endl;
+		delete NetDevice;
+		throw;
 	}
 }
 
@@ -65,42 +119,25 @@ int main(int argc, char* argv[])
 
 	FillArguments(Args, argc, argv);
 
-	NetworkDevice* NetDevice = nullptr;
-	// Create proper NetworkDevice
-	if (Args.Role == "client")
+	if (Args.Mode != "send" and Args.Mode != "receive")
 	{
-		NetDevice = new Client(Args.Ip, Args.Port);
-	}
-	else if (Args.Role == "server")
-	{
-		NetDevice = new Server(Args.Port);
-	}
-	else
-	{
-		CMD::PrintError() << "Wrong role!!!!!!\n\n" << Usage;
-		return Errors.At("WrongRole");
+		CMD::Print() << "Wrong mode!!!!!!\n\n" << Usage;
+		return Errors.At("WrongMode");
 	}
 
-	// send or receive file depending on mode
-	if (Args.Mode == "send")
+	size_t Tries = 0;
+	while (Tries < Args.MaxRetries || Args.bInfiniteReconnects)
 	{
-		bool bError = false;
+		++Tries;
 		try
 		{
-			bError = SendFile(*NetDevice, Args.FileName);
+			return StartApplication(Args);
 		}
-		catch (NetworkException Err)
+		catch (...)
 		{
-			bError = true;
-			CMD::Print() << "Error occurred!\n" << Err.what() << "\n";
+			CMD::Print() << "Trying to restart application in 5 seconds!" << std::endl;
+			Sleep(5000);
+			CMD::Print() << "Restarting application! " << Args.MaxRetries - Tries << " tries left!" << std::endl;
 		}
-		return bError;
 	}
-	else
-	{
-		return ReceiveFile(*NetDevice, Args.Path);
-	}
-
-	CMD::PrintError() << "Wrong mode!!!!!!\n\n" << Usage;
-	return Errors.At("WrongMode");
 }

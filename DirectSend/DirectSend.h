@@ -13,7 +13,7 @@ class ProgressBar;
  * @FileName - path to the desired file
  * @return - error code, 0 on success
  */
-int SendFile(NetworkDevice& NetDevice, String& FileName);
+int SendFile(NetworkDevice& NetDevice, String& FilePath);
 
 /**
  * Receive file to the netdevice
@@ -31,7 +31,8 @@ int ReceiveFile(NetworkDevice& NetDevice, String& Path);
 class SendFileDataTask
 {
 public:
-	SendFileDataTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, bool& InbFinished);
+	SendFileDataTask(NetworkDevice& InDevice, Mutex& InBufferMutex,
+					 List<Buffer*>& InSharedBuffer, bool& InbFinished, bool& InbLostConnection);
 
 	void operator()();
 private:
@@ -40,6 +41,8 @@ private:
 	List<Buffer*>& SharedBuffer;
 	// Set from other thread
 	const bool& bFinished;
+	// Used to indicate connection lost for the main thread
+	bool& bLostConnection;
 };
 
 /** Send file tasks end */
@@ -52,7 +55,9 @@ private:
 class WriteToFileTask
 {
 public:
-	WriteToFileTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, FileHandle& InFile, ProgressBar& InPB, bool& InbFinished);
+	WriteToFileTask(NetworkDevice& InDevice, Mutex& InBufferMutex,
+					List<Buffer*>& InSharedBuffer, FileHandle& InFile,
+					ProgressBar& InPB, bool& InbFinished, bool& InbLostConnection);
 
 	void operator()();
 private:
@@ -63,6 +68,7 @@ private:
 	ProgressBar& PB;
 	// Set from other thread
 	const bool& bFinished;
+	const bool& bLostConnection;
 };
 
 /**
@@ -71,7 +77,10 @@ private:
 class ReceiveFileListenTask
 {
 public:
-	ReceiveFileListenTask(NetworkDevice& InDevice, Mutex& InBufferMutex, List<Buffer*>& InSharedBuffer, FileHandle& InFile, ProgressBar& InPB, String& InPath, OperationCode& InOpCode, bool& InbFinished);
+	ReceiveFileListenTask(NetworkDevice& InDevice, Mutex& InBufferMutex,
+						  List<Buffer*>& InSharedBuffer, FileHandle& InFile, 
+						  ProgressBar& InPB, String InPath, OperationCode& InOpCode, 
+						  bool& InbFinished, bool& InbLostConnection);
 
 	void operator()(OperationCode OpCode);
 
@@ -86,9 +95,10 @@ private:
 	List<Buffer*>& SharedBuffer;
 	FileHandle& File;
 	ProgressBar& PB;
-	String& Path;
+	String Path;
 	OperationCode& CurrentState;
 	bool& bFinished;
+	bool& bLostConnection;
 };
 
 /** Receive file tasks end */

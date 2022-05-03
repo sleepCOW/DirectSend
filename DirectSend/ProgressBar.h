@@ -11,6 +11,7 @@ class ProgressBar
 {
 public:
 	ProgressBar(std::wstring InitialText, size_t BarSize);
+	~ProgressBar();
 
 	void SetPosition(COORD InPosition);
 	void SetFileSize(LargeInteger FileSize);

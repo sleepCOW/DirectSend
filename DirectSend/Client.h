@@ -24,7 +24,7 @@ Client::Client(String Ip, String Port)
     // Initialize Winsock
     BytesReceived = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (BytesReceived != 0) {
-        CMD::PrintError() << "WSAStartup failed with error: " << BytesReceived << std::endl;
+        CMD::PrintDebug() << "WSAStartup failed with error: " << BytesReceived << std::endl;
         return;
     }
 
@@ -37,19 +37,19 @@ Client::Client(String Ip, String Port)
     addrinfo* result = nullptr;
     BytesReceived = getaddrinfo(Ip.data(), Port.data(), &hints, &result);
     if (ErrorCode != 0) {
-        CMD::PrintError() << "getaddrinfo failed with error: " << ErrorCode << std::endl;
+        CMD::PrintDebug() << "getaddrinfo failed with error: " << ErrorCode << std::endl;
         return;
     }
 
     // Attempt to connect to an address until one succeeds
     while (not ConnectToServer(result))
     {
-        CMD::PrintError() << "Reattempting in 1 second!" << std::endl;
+        CMD::Print() << "Reattempting in 1 second!" << std::endl;
         Sleep(1000);
     }
 
     if (ClientSocket == INVALID_SOCKET) {
-        CMD::PrintError() << "Unable to connect to server!" << std::endl;
+        CMD::Print() << "Unable to connect to server!" << std::endl;
         return;
     }
 }
@@ -60,7 +60,7 @@ bool Client::ConnectToServer(Addrinfo* start)
         // Create a SOCKET for connecting to server
         ClientSocket.GetSocket() = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
         if (ClientSocket == INVALID_SOCKET) {
-            CMD::PrintError() << "socket failed with error: " << WSAGetLastError() << std::endl;
+            CMD::PrintDebug() << "socket failed with error: " << WSAGetLastError() << std::endl;
             return false;
         }
 
@@ -68,7 +68,7 @@ bool Client::ConnectToServer(Addrinfo* start)
         
         ErrorCode = connect(ClientSocket.GetSocket(), ptr->ai_addr, (int)ptr->ai_addrlen);
         if (ErrorCode == SOCKET_ERROR) {
-            CMD::PrintError() << "socket failed with error: " << WSAGetLastError() << std::endl;
+            CMD::PrintDebug() << "socket failed with error: " << WSAGetLastError() << std::endl;
             closesocket(ClientSocket);
             ClientSocket = INVALID_SOCKET;
             continue;
@@ -78,6 +78,6 @@ bool Client::ConnectToServer(Addrinfo* start)
         return true;
     }
 
-    CMD::PrintError() << "Failed to connect to the server!\n";
+    CMD::PrintDebug() << "Failed to connect to the server!\n";
     return false;
 }
